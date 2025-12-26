@@ -1,0 +1,323 @@
+// This is your Prisma schema file
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// NextAuth Models
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?   // For Credentials provider
+  accounts      Account[]
+  sessions      Session[]
+  
+  // App specific relations
+  bankAccounts  BankAccount[]
+  investments   Investment[]
+  incomes       Income[]
+  expenses      Expense[]
+  subscriptions Subscription[]
+  budgets       Budget[]
+  creditCards   CreditCard[]
+  taxDeductions TaxDeduction[]
+  taxProfile    TaxProfile?
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String? @db.Text
+  access_token       String? @db.Text
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String? @db.Text
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// App Models
+
+enum AccountType {
+  SAVINGS
+  CURRENT
+  SALARY
+}
+
+model BankAccount {
+  id             String      @id @default(cuid())
+  userId         String
+  accountName    String
+  bankName       String
+  accountType    AccountType
+  accountNumber  String      // Encrypted in app logic
+  ifscCode       String
+  currentBalance Decimal     @default(0)
+  isPrimary      Boolean     @default(false)
+  isActive       Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  incomes Income[]
+  expenses Expense[]
+}
+
+enum AssetClass {
+  EQUITY
+  DEBT
+  HYBRID
+  FD
+  PPF
+  NPS
+  GOLD
+  REAL_ESTATE
+  EPF
+  BONDS
+  OTHERS
+}
+
+model Investment {
+  id            String     @id @default(cuid())
+  userId        String
+  assetClass    AssetClass
+  assetName     String
+  quantity      Decimal
+  purchasePrice Decimal
+  purchaseDate  DateTime
+  currentPrice  Decimal?
+  currentValue  Decimal?
+  maturityDate  DateTime?
+  notes         String?    @db.Text
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  taxDeductions TaxDeduction[]
+}
+
+enum IncomeType {
+  SALARY
+  FREELANCE
+  RENTAL
+  INTEREST
+  BONUS
+  GIFT
+  OTHER
+}
+
+enum Frequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+model Income {
+  id            String     @id @default(cuid())
+  userId        String
+  source        String
+  amount        Decimal
+  incomeDate    DateTime
+  type          IncomeType
+  isRecurring   Boolean    @default(false)
+  frequency     Frequency?
+  isTaxable     Boolean    @default(true)
+  bankAccountId String?
+  category      String
+  invoiceUrl    String?
+  notes         String?    @db.Text
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bankAccount BankAccount? @relation(fields: [bankAccountId], references: [id])
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CREDIT_CARD
+  UPI
+  OTHER
+}
+
+model Expense {
+  id                String        @id @default(cuid())
+  userId            String
+  amount            Decimal
+  expenseDate       DateTime
+  category          String
+  subcategory       String?
+  description       String
+  paymentMethod     PaymentMethod
+  bankAccountId     String?
+  creditCardId      String?
+  isRecurring       Boolean       @default(false)
+  frequency         Frequency?
+  invoiceUrl        String?
+  isBusinessExpense Boolean       @default(false)
+  isTaxDeductible   Boolean       @default(false)
+  taxSection        String?       // e.g. "80C", "80D"
+  notes             String?       @db.Text
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bankAccount   BankAccount?   @relation(fields: [bankAccountId], references: [id])
+  creditCard    CreditCard?    @relation(fields: [creditCardId], references: [id])
+  splits        ExpenseSplit[]
+  taxDeductions TaxDeduction[]
+}
+
+model ExpenseSplit {
+  id         String   @id @default(cuid())
+  expenseId  String
+  personName String
+  amount     Decimal
+  isPaid     Boolean  @default(false)
+  paidDate   DateTime?
+
+  expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+}
+
+model Subscription {
+  id              String    @id @default(cuid())
+  userId          String
+  serviceName     String
+  amount          Decimal
+  billingCycle    Frequency
+  startDate       DateTime
+  endDate         DateTime?
+  nextBillingDate DateTime
+  autoRenewal     Boolean   @default(true)
+  reminderDays    Int[]     // Stored as array of integers
+  category        String
+  paymentMethod   String
+  creditCardId    String?
+  isActive        Boolean   @default(true)
+  notes           String?   @db.Text
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  creditCard CreditCard? @relation(fields: [creditCardId], references: [id])
+}
+
+enum BudgetPeriod {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+model Budget {
+  id             String       @id @default(cuid())
+  userId         String
+  category       String
+  amount         Decimal
+  period         BudgetPeriod
+  startDate      DateTime
+  endDate        DateTime
+  alertThreshold Int          @default(80) // Percentage
+  carryForward   Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CreditCard {
+  id                 String   @id @default(cuid())
+  userId             String
+  cardName           String
+  bankName           String
+  lastFourDigits     String
+  creditLimit        Decimal
+  currentOutstanding Decimal  @default(0)
+  availableCredit    Decimal
+  billingDate        Int // Day of month
+  dueDate            Int // Day of month
+  interestRate       Decimal?
+  rewardPoints       Int      @default(0)
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expenses      Expense[]
+  subscriptions Subscription[]
+}
+
+enum TaxRegime {
+  OLD
+  NEW
+}
+
+model TaxProfile {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  financialYear   String // e.g., "2024-25"
+  preferredRegime TaxRegime @default(NEW)
+  annualIncome    Decimal   @default(0)
+  panNumber       String? // Encrypted
+  aadhaarNumber   String? // Encrypted
+  employerTDS     Decimal   @default(0)
+  advanceTaxPaid  Decimal   @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TaxDeduction {
+  id            String   @id @default(cuid())
+  userId        String
+  financialYear String // e.g., "2024-25"
+  section       String // 80C, 80D, etc.
+  amount        Decimal
+  description   String?
+  expenseId     String?
+  investmentId  String?
+  proofUrl      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expense    Expense?    @relation(fields: [expenseId], references: [id])
+  investment Investment? @relation(fields: [investmentId], references: [id])
+}
