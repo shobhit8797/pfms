@@ -65,8 +65,10 @@ export async function getBudgets(): Promise<(Budget & { spent: number })[]> {
   const session = await auth()
   if (!session?.user?.id) return []
 
+  const userId = session.user.id
+
   const budgets = await prisma.budget.findMany({
-    where: { userId: session.user.id },
+    where: { userId },
     orderBy: { startDate: "desc" },
   })
 
@@ -75,7 +77,7 @@ export async function getBudgets(): Promise<(Budget & { spent: number })[]> {
   const budgetsWithSpent = await Promise.all(budgets.map(async (budget) => {
       const expenses = await prisma.expense.aggregate({
           where: {
-              userId: session.user.id,
+              userId,
               category: budget.category,
               expenseDate: {
                   gte: budget.startDate,

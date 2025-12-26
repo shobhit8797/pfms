@@ -34,6 +34,8 @@ export async function createExpense(prevState: ExpenseState | undefined, formDat
     return { error: "Unauthorized" }
   }
 
+  const userId = session.user.id
+
   const rawData = {
     amount: formData.get("amount"),
     expenseDate: formData.get("expenseDate"),
@@ -78,7 +80,7 @@ export async function createExpense(prevState: ExpenseState | undefined, formDat
       // Create expense
       const expense = await tx.expense.create({
         data: {
-          userId: session.user.id!,
+          userId,
           ...data,
         },
       })
@@ -124,8 +126,10 @@ export async function getExpenses(limit = 20, offset = 0) {
     const session = await auth()
     if (!session?.user?.id) return []
   
+    const userId = session.user.id
+
     return await prisma.expense.findMany({
-      where: { userId: session.user.id },
+      where: { userId },
       orderBy: { expenseDate: "desc" },
       take: limit,
       skip: offset,
@@ -144,10 +148,12 @@ export async function deleteExpense(expenseId: string) {
     const session = await auth()
     if (!session?.user?.id) return { error: "Unauthorized" }
 
+    const userId = session.user.id
+
     try {
         await prisma.$transaction(async (tx) => {
             const expense = await tx.expense.findUnique({
-                where: { id: expenseId, userId: session.user.id },
+                where: { id: expenseId, userId },
             })
 
             if (!expense) throw new Error("Expense not found")

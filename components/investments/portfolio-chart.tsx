@@ -30,7 +30,7 @@ export function PortfolioChart({ data }: Props) {
             ))}
           </Pie>
           <Tooltip 
-            formatter={(value: number) => `₹${value.toFixed(2)}`}
+            formatter={(value: number | undefined) => value !== undefined ? `₹${value.toFixed(2)}` : ''}
           />
           <Legend />
         </PieChart>

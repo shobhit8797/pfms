@@ -2,6 +2,8 @@
 
 import { auth } from "@/auth"
 import { prisma } from "@/lib/db"
+import { revalidatePath } from "next/cache"
+import { z } from "zod"
 
 type TaxRegimeResult = {
   taxableIncome: number
@@ -9,6 +11,74 @@ type TaxRegimeResult = {
   cess: number
   totalTax: number
   regime: "OLD" | "NEW"
+}
+
+const deductionSchema = z.object({
+  section: z.string().min(1, "Section is required"),
+  amount: z.coerce.number().positive("Amount must be positive"),
+  description: z.string().optional(),
+})
+
+export type DeductionState = {
+  error?: string
+  success?: string
+}
+
+function getCurrentFinancialYear(): string {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1 // 1-12
+  
+  // Financial year runs from April to March
+  // If month >= 4, it's the current year to next year
+  // Otherwise, it's previous year to current year
+  if (month >= 4) {
+    return `${year}-${(year + 1).toString().slice(-2)}`
+  } else {
+    return `${year - 1}-${year.toString().slice(-2)}`
+  }
+}
+
+export async function addDeduction(formData: FormData): Promise<DeductionState> {
+  const session = await auth()
+  if (!session?.user?.id) {
+    return { error: "Unauthorized" }
+  }
+
+  const userId = session.user.id
+
+  const rawData = {
+    section: formData.get("section"),
+    amount: formData.get("amount"),
+    description: formData.get("description") || undefined,
+  }
+
+  const validated = deductionSchema.safeParse(rawData)
+
+  if (!validated.success) {
+    return { error: "Invalid input data" }
+  }
+
+  const data = validated.data
+  const financialYear = getCurrentFinancialYear()
+
+  try {
+    await prisma.taxDeduction.create({
+      data: {
+        userId,
+        financialYear,
+        section: data.section,
+        amount: data.amount,
+        description: data.description,
+      },
+    })
+
+    revalidatePath("/dashboard/tax")
+    return { success: "Deduction added successfully" }
+  } catch (error) {
+    console.error("Add deduction error:", error)
+    return { error: "Failed to add deduction" }
+  }
 }
 
 export async function calculateTax() {
