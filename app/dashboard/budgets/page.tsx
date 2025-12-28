@@ -11,7 +11,8 @@ import {
 } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
-import { Trash2 } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Trash2, PieChart, AlertTriangle, CheckCircle } from "lucide-react"
 
 export default async function BudgetsPage() {
   const session = await auth()
@@ -19,68 +20,173 @@ export default async function BudgetsPage() {
 
   const budgets = await getBudgets()
 
+  const totalBudget = budgets.reduce((acc, b) => acc + Number(b.amount), 0)
+  const totalSpent = budgets.reduce((acc, b) => acc + b.spent, 0)
+  const overBudgetCount = budgets.filter(b => b.spent > Number(b.amount)).length
+
   return (
-    <div className="p-8 space-y-8">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Budgets</h1>
+    <div className="p-6 md:p-8 space-y-8">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="font-heading text-3xl md:text-4xl font-semibold tracking-tight">
+            Budgets
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Set spending limits and track your progress
+          </p>
+        </div>
         <AddBudgetDialog />
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {budgets.map((budget) => {
-          const percentUsed = (budget.spent / Number(budget.amount)) * 100
-          const isOverBudget = percentUsed > 100
-          const isNearLimit = percentUsed >= budget.alertThreshold && !isOverBudget
-          
-          return (
-            <Card key={budget.id}>
-               <CardHeader className="pb-2">
-                 <div className="flex justify-between items-start">
-                   <div>
-                     <CardTitle className="text-lg">{budget.category}</CardTitle>
-                     <p className="text-xs text-muted-foreground">
+      {/* Stats Cards */}
+      {budgets.length > 0 && (
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card className="bg-card border-border">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Total Budget
+              </CardTitle>
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                <PieChart className="w-4 h-4 text-primary" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <p className="font-heading text-3xl font-semibold">
+                ₹{totalBudget.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">{budgets.length} active budgets</p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card border-border">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Total Spent
+              </CardTitle>
+              <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
+                <CheckCircle className="w-4 h-4 text-muted-foreground" />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <p className="font-heading text-3xl font-semibold">
+                ₹{totalSpent.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {((totalSpent / totalBudget) * 100).toFixed(0)}% utilized
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className={`bg-card border-border ${overBudgetCount > 0 ? "border-destructive/30" : "border-success/30"}`}>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Budget Health
+              </CardTitle>
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${overBudgetCount > 0 ? "bg-destructive/10" : "bg-success/10"}`}>
+                {overBudgetCount > 0 ? (
+                  <AlertTriangle className="w-4 h-4 text-destructive" />
+                ) : (
+                  <CheckCircle className="w-4 h-4 text-success" />
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              <p className={`font-heading text-3xl font-semibold ${overBudgetCount > 0 ? "text-destructive" : "text-success"}`}>
+                {overBudgetCount > 0 ? `${overBudgetCount} Over` : "On Track"}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {overBudgetCount > 0 ? "Budgets exceeded" : "All budgets healthy"}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Budgets Grid */}
+      {budgets.length === 0 ? (
+        <div className="flex h-[400px] shrink-0 items-center justify-center rounded-xl border border-dashed border-border bg-card/50">
+          <div className="mx-auto flex max-w-[420px] flex-col items-center justify-center text-center">
+            <div className="w-16 h-16 rounded-xl bg-muted flex items-center justify-center mb-4">
+              <PieChart className="w-8 h-8 text-muted-foreground" />
+            </div>
+            <h3 className="font-heading text-xl font-semibold">No budgets set</h3>
+            <p className="mb-6 mt-2 text-sm text-muted-foreground max-w-sm">
+              Create budgets by category to keep your spending in check.
+            </p>
+            <AddBudgetDialog />
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {budgets.map((budget, index) => {
+            const percentUsed = (budget.spent / Number(budget.amount)) * 100
+            const isOverBudget = percentUsed > 100
+            const isNearLimit = percentUsed >= budget.alertThreshold && !isOverBudget
+            const remaining = Number(budget.amount) - budget.spent
+            
+            return (
+              <Card 
+                key={budget.id}
+                className={`bg-card border-border hover:border-border/80 transition-all opacity-0 animate-fade-in-up ${isOverBudget ? "border-destructive/30" : isNearLimit ? "border-chart-5/30" : ""}`}
+                style={{ animationDelay: `${index * 50}ms` }}
+              >
+                <CardHeader className="pb-2">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle className="font-heading text-lg font-semibold">{budget.category}</CardTitle>
+                      <p className="text-xs text-muted-foreground mt-1">
                         {format(budget.startDate, "MMM d")} - {format(budget.endDate, "MMM d, yyyy")}
-                     </p>
-                   </div>
-                   <form action={async () => {
-                     "use server"
-                     await deleteBudget(budget.id)
-                   }}>
-                     <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-red-600">
-                        <Trash2 className="h-4 w-4" />
-                     </Button>
-                   </form>
-                 </div>
-               </CardHeader>
-               <CardContent>
-                 <div className="mb-4">
-                   <div className="flex justify-between mb-2 text-sm">
-                     <span className="font-medium">
-                        ₹{budget.spent.toFixed(2)}
-                        <span className="text-gray-500 font-normal"> of ₹{Number(budget.amount).toFixed(2)}</span>
-                     </span>
-                     <span className={`${isOverBudget ? "text-red-600 font-bold" : isNearLimit ? "text-orange-500 font-bold" : "text-gray-600"}`}>
-                       {percentUsed.toFixed(0)}%
-                     </span>
-                   </div>
-                   <Progress 
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge 
+                        variant="secondary" 
+                        className={`text-xs ${isOverBudget ? "bg-destructive/10 text-destructive" : isNearLimit ? "bg-chart-5/10 text-chart-5" : "bg-success/10 text-success"} border-0`}
+                      >
+                        {percentUsed.toFixed(0)}%
+                      </Badge>
+                      <form action={async () => {
+                        "use server"
+                        await deleteBudget(budget.id)
+                      }}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </form>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="mb-4">
+                    <div className="flex justify-between mb-2 text-sm">
+                      <span className="font-medium">
+                        ₹{budget.spent.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                        <span className="text-muted-foreground font-normal"> of ₹{Number(budget.amount).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+                      </span>
+                    </div>
+                    <Progress 
                       value={Math.min(percentUsed, 100)} 
-                      className={`h-2 ${isOverBudget ? "bg-red-100" : ""}`}
-                      // Note: We'd need to customize Progress component or use inline styles/classes for color changing based on value
-                      // Standard shadcn Progress uses primary color. We can override via classes if exposed or custom logic.
+                      className="h-2"
                     />
-                    <div className={`h-1 w-full mt-1 rounded-full ${isOverBudget ? "bg-red-500" : isNearLimit ? "bg-orange-500" : "bg-primary"}`} style={{ width: `${Math.min(percentUsed, 100)}%` }}></div>
-                 </div>
-                 
-                 <div className="flex justify-between text-xs text-gray-500">
-                    <span>{budget.period}</span>
-                    <span>{isOverBudget ? "Over budget" : `₹${(Number(budget.amount) - budget.spent).toFixed(2)} left`}</span>
-                 </div>
-               </CardContent>
-            </Card>
-          )
-        })}
-      </div>
+                  </div>
+                  
+                  <div className="flex justify-between items-center text-sm">
+                    <Badge variant="outline" className="text-xs font-normal">
+                      {budget.period}
+                    </Badge>
+                    <span className={`font-medium ${isOverBudget ? "text-destructive" : "text-muted-foreground"}`}>
+                      {isOverBudget 
+                        ? `₹${Math.abs(remaining).toLocaleString('en-IN', { maximumFractionDigits: 0 })} over` 
+                        : `₹${remaining.toLocaleString('en-IN', { maximumFractionDigits: 0 })} left`}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
