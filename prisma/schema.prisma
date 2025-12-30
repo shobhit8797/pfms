@@ -20,15 +20,21 @@ model User {
   sessions      Session[]
   
   // App specific relations
-  bankAccounts  BankAccount[]
-  investments   Investment[]
-  incomes       Income[]
-  expenses      Expense[]
-  subscriptions Subscription[]
-  budgets       Budget[]
-  creditCards   CreditCard[]
-  taxDeductions TaxDeduction[]
-  taxProfile    TaxProfile?
+  bankAccounts         BankAccount[]
+  investments          Investment[]
+  incomes              Income[]
+  expenses             Expense[]
+  subscriptions        Subscription[]
+  budgets              Budget[]
+  creditCards          CreditCard[]
+  taxDeductions        TaxDeduction[]
+  taxProfile           TaxProfile?
+  // Phase 2+ Bank Account relations
+  transferTransactions TransferTransaction[]
+  statementUploads     StatementUpload[]
+  reconciliationRecords ReconciliationRecord[]
+  balanceAlerts        BalanceAlert[]
+  accountGroups        AccountGroup[]
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -75,6 +81,41 @@ enum AccountType {
   SAVINGS
   CURRENT
   SALARY
+  OVERDRAFT
+}
+
+enum FileType {
+  CSV
+  XLSX
+  PDF
+}
+
+enum ProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ReconciliationStatus {
+  IN_PROGRESS
+  COMPLETED
+  DISCREPANCY_FOUND
+  RESOLVED
+}
+
+enum TransferStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum AlertType {
+  LOW_BALANCE
+  MINIMUM_BALANCE
+  UNUSUAL_ACTIVITY
+  HIGH_SPENDING
 }
 
 model BankAccount {
@@ -88,12 +129,168 @@ model BankAccount {
   currentBalance Decimal     @default(0)
   isPrimary      Boolean     @default(false)
   isActive       Boolean     @default(true)
+
+  // Phase 2: Analytics & Tracking
+  minimumBalance Decimal?    @default(0)
+  interestRate   Decimal?    // Annual interest rate percentage
+  lastReconciled DateTime?   // Last reconciliation date
+
+  // Phase 6: Organization
+  groupId        String?
+  tags           String[]    // Array of custom tags
+  notes          String?     @db.Text
+  color          String?     // UI color for visual identification
+
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
-  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  incomes Income[]
-  expenses Expense[]
+  user             User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group            AccountGroup?           @relation(fields: [groupId], references: [id])
+  incomes          Income[]
+  expenses         Expense[]
+  transfersFrom    TransferTransaction[]   @relation("FromAccount")
+  transfersTo      TransferTransaction[]   @relation("ToAccount")
+  statementUploads StatementUpload[]
+  reconciliations  ReconciliationRecord[]
+  balanceHistory   BalanceSnapshot[]
+  alerts           BalanceAlert[]
+}
+
+// Phase 3: Inter-Account Transfers
+model TransferTransaction {
+  id              String         @id @default(cuid())
+  userId          String
+  fromAccountId   String
+  toAccountId     String
+  amount          Decimal
+  transferDate    DateTime
+  description     String?
+  notes           String?        @db.Text
+  status          TransferStatus @default(COMPLETED)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fromAccount BankAccount @relation("FromAccount", fields: [fromAccountId], references: [id])
+  toAccount   BankAccount @relation("ToAccount", fields: [toAccountId], references: [id])
+}
+
+// Phase 2: Statement Upload & Reconciliation
+model StatementUpload {
+  id                 String           @id @default(cuid())
+  userId             String
+  bankAccountId      String
+  fileName           String
+  fileType           FileType
+  fileSize           Int              // In bytes
+  uploadDate         DateTime         @default(now())
+  statementPeriod    String           // e.g., "2024-01" for Jan 2024
+  statementStartDate DateTime
+  statementEndDate   DateTime
+  totalTransactions  Int              @default(0)
+  matchedCount       Int              @default(0)
+  unmatchedCount     Int              @default(0)
+  processingStatus   ProcessingStatus @default(PENDING)
+  errorMessage       String?          @db.Text
+
+  user           User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bankAccount    BankAccount            @relation(fields: [bankAccountId], references: [id])
+  transactions   ExtractedTransaction[]
+  reconciliation ReconciliationRecord?
+}
+
+// Extracted transactions from bank statements (raw data)
+model ExtractedTransaction {
+  id                String   @id @default(cuid())
+  statementUploadId String
+  transactionDate   DateTime
+  description       String
+  amount            Decimal
+  type              String   // DEBIT, CREDIT
+  balance           Decimal? // Running balance if available
+  referenceNumber   String?
+  category          String?  // Auto-suggested category
+
+  // Reconciliation
+  isMatched        Boolean @default(false)
+  matchedExpenseId String?
+  matchedIncomeId  String?
+
+  statementUpload StatementUpload @relation(fields: [statementUploadId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+}
+
+// Reconciliation tracking
+model ReconciliationRecord {
+  id                String               @id @default(cuid())
+  userId            String
+  bankAccountId     String
+  statementUploadId String               @unique
+  reconciliationDate DateTime            @default(now())
+
+  openingBalance  Decimal
+  closingBalance  Decimal
+  expectedBalance Decimal // From our records
+  actualBalance   Decimal // From statement
+  difference      Decimal // Discrepancy
+
+  totalCredits   Decimal
+  totalDebits    Decimal
+  matchedCount   Int
+  unmatchedCount Int
+
+  status ReconciliationStatus @default(IN_PROGRESS)
+  notes  String?              @db.Text
+
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bankAccount     BankAccount     @relation(fields: [bankAccountId], references: [id])
+  statementUpload StatementUpload @relation(fields: [statementUploadId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Phase 2: Balance tracking over time
+model BalanceSnapshot {
+  id            String   @id @default(cuid())
+  bankAccountId String
+  balance       Decimal
+  snapshotDate  DateTime
+  source        String   // MANUAL, RECONCILIATION, TRANSACTION
+
+  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  createdAt   DateTime    @default(now())
+}
+
+// Phase 2: Balance alerts
+model BalanceAlert {
+  id            String    @id @default(cuid())
+  userId        String
+  bankAccountId String
+  alertType     AlertType
+  threshold     Decimal?
+  message       String
+  isRead        Boolean   @default(false)
+  triggeredAt   DateTime  @default(now())
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+}
+
+// Phase 6: Account Groups/Folders
+model AccountGroup {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  color       String?
+  icon        String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accounts BankAccount[]
 }
 
 enum AssetClass {

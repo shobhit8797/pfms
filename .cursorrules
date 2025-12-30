@@ -1,0 +1,12 @@
+# Documentation & Context
+
+Before starting any task, architectural change, or feature implementation, you MUST consult the project documentation located in `.agent/docs`.
+
+- **Features**: Specific feature logic and schemas are in `.agent/docs/features/`.
+- **Architecture**: System architecture and data flow are in `.agent/docs/architecture.md`.
+- **Design**: Frontend design guidelines are in `.agent/docs/frontend-design.md`.
+
+## Workflow
+1.  **Search**: Use `file_search` or `read_file` to find relevant documentation in `.agent/docs` related to the user's request.
+2.  **Verify**: Ensure your implementation plan aligns with the documented architecture and design patterns.
+3.  **Update**: If you make changes that render the documentation obsolete, update the relevant documentation files to keep them in sync with the code.
