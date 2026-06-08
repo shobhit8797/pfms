@@ -13,12 +13,16 @@ import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Trash2, PieChart, AlertTriangle, CheckCircle } from "lucide-react"
+import { serializeDecimals } from "@/lib/utils"
 
 export default async function BudgetsPage() {
   const session = await auth()
   if (!session) redirect("/login")
 
-  const budgets = await getBudgets()
+  const budgetsRaw = await getBudgets()
+
+  // Serialize Decimal fields for Client Components
+  const budgets = serializeDecimals(budgetsRaw)
 
   const totalBudget = budgets.reduce((acc, b) => acc + Number(b.amount), 0)
   const totalSpent = budgets.reduce((acc, b) => acc + b.spent, 0)

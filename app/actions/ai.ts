@@ -2,7 +2,6 @@
 
 import { auth } from "@/auth"
 import { GoogleGenerativeAI } from "@google/generative-ai"
-import { PDFParse } from "pdf-parse"
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "")
 
@@ -57,7 +56,9 @@ export async function processAndAnalyzeStatement(formData: FormData) {
         if (file.type === "application/pdf") {
             const arrayBuffer = await file.arrayBuffer()
             const buffer = Buffer.from(arrayBuffer)
-            const parser = new PDFParse({ data: new Uint8Array(buffer) })
+            // Dynamic import to use server-only pdf-parse library
+            const { PDFParse } = await import("pdf-parse")
+            const parser = new PDFParse({ data: buffer })
             const result = await parser.getText()
             textContent = result.text
         } else {

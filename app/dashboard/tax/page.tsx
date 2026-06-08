@@ -12,12 +12,16 @@ import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { ReceiptIndianRupee, TrendingUp, CheckCircle, AlertCircle } from "lucide-react"
+import { serializeDecimals } from "@/lib/utils"
 
 export default async function TaxPage() {
   const session = await auth()
   if (!session) redirect("/login")
 
-  const taxData = await calculateTax()
+  const taxDataRaw = await calculateTax()
+
+  // Serialize Decimal fields for Client Components
+  const taxData = serializeDecimals(taxDataRaw)
 
   if (!taxData) {
     return (

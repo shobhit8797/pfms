@@ -16,16 +16,22 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { CreditCard, ArrowDownRight, Receipt } from "lucide-react"
+import { serializeDecimals } from "@/lib/utils"
 
 export default async function ExpensesPage() {
   const session = await auth()
   if (!session) redirect("/login")
 
-  const [expenses, bankAccounts, creditCards] = await Promise.all([
+  const [expensesRaw, bankAccountsRaw, creditCardsRaw] = await Promise.all([
     getExpenses(),
     getBankAccounts(),
     getCreditCards(),
   ])
+
+  // Serialize Decimal fields for Client Components
+  const expenses = serializeDecimals(expensesRaw)
+  const bankAccounts = serializeDecimals(bankAccountsRaw)
+  const creditCards = serializeDecimals(creditCardsRaw)
 
   const totalExpenses = expenses.reduce((acc, exp) => acc + Number(exp.amount), 0)
   const thisMonthExpenses = expenses

@@ -13,12 +13,17 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { format } from "date-fns"
 import { Wallet, ArrowUpRight, TrendingUp } from "lucide-react"
+import { serializeDecimals } from "@/lib/utils"
 
 export default async function IncomePage() {
-  const [incomes, accounts] = await Promise.all([
+  const [incomesRaw, accountsRaw] = await Promise.all([
     getIncomes(),
     getBankAccounts(),
   ])
+
+  // Serialize Decimal fields for Client Components
+  const incomes = serializeDecimals(incomesRaw)
+  const accounts = serializeDecimals(accountsRaw)
 
   const totalIncome = incomes.reduce((acc, inc) => acc + Number(inc.amount), 0)
   const thisMonthIncome = incomes
