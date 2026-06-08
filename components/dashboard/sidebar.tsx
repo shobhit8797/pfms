@@ -12,7 +12,8 @@ import {
   Sparkles,
   LogOut,
   Landmark,
-  PiggyBank
+  PiggyBank,
+  WalletCards
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -29,6 +30,7 @@ interface SidebarProps {
 const navItems = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/dashboard/accounts", label: "Accounts", icon: Landmark },
+  { href: "/dashboard/credit-cards", label: "Credit Cards", icon: WalletCards },
   { href: "/dashboard/income", label: "Income", icon: Wallet },
   { href: "/dashboard/expenses", label: "Expenses", icon: CreditCard },
   { href: "/dashboard/budget", label: "50:30:20", icon: PiggyBank },

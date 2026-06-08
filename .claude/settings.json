@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Edit",
+      "Write",
+      "Read",
+      "Glob",
+      "Grep",
+      "NotebookEdit",
+      "Bash"
+    ],
+    "ask": [
+      "Bash(prisma migrate:*)",
+      "Bash(prisma db push:*)",
+      "Bash(prisma db execute:*)",
+      "Bash(prisma migrate reset:*)",
+      "Bash(prisma migrate deploy:*)",
+      "Bash(bunx prisma migrate:*)",
+      "Bash(bunx prisma db push:*)",
+      "Bash(bunx prisma db execute:*)",
+      "Bash(bunx prisma migrate reset:*)",
+      "Bash(bunx prisma migrate deploy:*)",
+      "Bash(npx prisma migrate:*)",
+      "Bash(npx prisma db push:*)",
+      "Bash(npx prisma db execute:*)",
+      "Bash(npx prisma migrate reset:*)",
+      "Bash(psql:*)",
+      "Bash(pg_dump:*)",
+      "Bash(pg_restore:*)",
+      "Bash(supabase:*)",
+      "Bash(vercel:*)",
+      "Bash(bunx vercel:*)",
+      "Bash(npx vercel:*)",
+      "Bash(git push:*)"
+    ],
+    "deny": [
+      "Bash(sudo:*)",
+      "Bash(rm -rf /:*)"
+    ]
+  }
+}

@@ -42,3 +42,6 @@ next-env.d.ts
 
 /lib/generated/prisma
 /app/generated/prisma
+
+# Claude Code personal (machine-local) overrides — keep team policy in settings.json
+.claude/settings.local.json

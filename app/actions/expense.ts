@@ -40,7 +40,7 @@ export async function createExpense(prevState: ExpenseState | undefined, formDat
     amount: formData.get("amount"),
     expenseDate: formData.get("expenseDate"),
     category: formData.get("category"),
-    subcategory: formData.get("subcategory"),
+    subcategory: formData.get("subcategory") || undefined,
     description: formData.get("description"),
     paymentMethod: formData.get("paymentMethod"),
     bankAccountId: formData.get("bankAccountId") || undefined,
@@ -49,8 +49,8 @@ export async function createExpense(prevState: ExpenseState | undefined, formDat
     frequency: formData.get("frequency") || undefined,
     isBusinessExpense: formData.get("isBusinessExpense") === "on",
     isTaxDeductible: formData.get("isTaxDeductible") === "on",
-    taxSection: formData.get("taxSection"),
-    notes: formData.get("notes"),
+    taxSection: formData.get("taxSection") || undefined,
+    notes: formData.get("notes") || undefined,
   }
 
   const validated = expenseSchema.safeParse(rawData)

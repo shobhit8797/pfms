@@ -1,361 +1,253 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file is the **canonical agent context** for this repository. It guides Claude Code
+(claude.ai/code) and — via the `AGENTS.md` symlink — Cursor, Codex, Copilot, and any other
+coding agent that reads `AGENTS.md`. Keep it accurate: it is the single source of truth.
+
+> **Agents: read this first, then the doc map below. If you change behavior that contradicts
+> anything here, update this file in the same change.** See "Keeping context current".
+
+## Doc map (where authoritative detail lives)
+
+| You need… | Read |
+|---|---|
+| This file | Conventions, stack, gotchas, the rules you MUST follow |
+| Docs index | `.agent/docs/README.md` |
+| System architecture & data flow | `.agent/docs/architecture.md` |
+| UI/UX + design system | `.agent/docs/frontend-design.md` |
+| A specific feature's schema/actions | `.agent/docs/features/<feature>.md` |
+| Exact dependency versions | `package.json` (do not hardcode versions in prose) |
+| Current branch / recent work | `git status`, `git log` (not documented here — it rots) |
 
 ## Project Overview
 
-Personal Finance Management System (PFMS) - A comprehensive financial management web application built with Next.js 14+ (App Router), TypeScript, PostgreSQL, Prisma ORM, and NextAuth v5. The system provides bank account management, expense/income tracking, investments, budgets, subscriptions, tax planning, and AI-powered assistance via Google Gemini.
+Personal Finance Management System (PFMS) — a financial management web app: bank accounts,
+credit cards, expense/income tracking, investments, budgets, subscriptions, Indian tax planning,
+a 50:30:20 budgeting tracker, and AI assistance. Built with Next.js (App Router), TypeScript,
+PostgreSQL + Prisma, and NextAuth v5. It also exposes a REST + delta-sync API (`app/api/v1/**`)
+intended for a future native iOS client.
 
 ## Essential Commands
 
-### Development
 ```bash
-bun run dev              # Start Next.js dev server (runs on port 3000)
-bun run build            # Build for production (includes Prisma generation)
-bun run start            # Start production server
-bun run lint             # Run ESLint
+bun run dev              # Next.js dev server (port 3000)
+bun run build            # Production build (runs prisma generate)
+bun run start            # Production server
+bun run lint             # ESLint
+
+prisma generate          # Generate Prisma Client (auto on postinstall)
+prisma migrate dev       # Create + apply migration (development)
+prisma migrate deploy    # Apply migrations (production)
+prisma studio            # DB browser GUI
+prisma db push           # Push schema without a migration (dev only)
 ```
 
-### Database (Prisma)
-```bash
-prisma generate          # Generate Prisma Client (auto-runs on postinstall)
-prisma migrate dev       # Create and apply migrations in development
-prisma migrate deploy    # Apply migrations in production
-prisma studio            # Open Prisma Studio GUI
-prisma db push           # Push schema changes without migration (dev only)
-```
+> Migrations use `DIRECT_URL` (see `prisma.config.ts`); the app uses the pooled `DATABASE_URL`.
 
 ## Architecture
 
 ### Stack
-- **Runtime**: Bun (package manager and runtime)
-- **Framework**: Next.js 14+ with App Router
-- **Language**: TypeScript (strict mode)
-- **Database**: PostgreSQL with Prisma ORM
-- **Auth**: NextAuth v5 (Auth.js) with JWT sessions and Prisma Adapter
-- **UI**: Tailwind CSS v4 + Shadcn UI (Radix UI primitives)
-- **AI**: Google Gemini AI for document parsing and natural language processing
-- **Forms**: React Hook Form + Zod validation
+- **Runtime / package manager**: Bun
+- **Framework**: Next.js (App Router, Turbopack in dev) — see `package.json` for the exact version
+- **Language**: TypeScript (strict)
+- **Database**: PostgreSQL (Supabase) + Prisma ORM
+- **Auth**: NextAuth v5 (Auth.js), JWT sessions, Prisma Adapter
+- **UI**: Tailwind CSS v4 + Shadcn UI (Radix primitives), `next-themes` dark mode
+- **AI**: **dual-stack** — Google Gemini for the legacy AI assistant + bank-statement parsing
+  (`app/actions/ai.ts`); **OpenRouter** for the 50:30:20 statement-import extraction (`lib/llm/*`)
+- **File storage**: **Vercel Blob** (`lib/blob.ts`, client-upload via `app/api/v1/blob/upload`)
+- **Forms**: React Hook Form + Zod
 
-### Core Patterns
+### Two coexisting subsystems
+1. **Legacy features** (accounts, credit cards, income, expenses, investments, budgets,
+   subscriptions, tax): logic lives directly in **Server Actions** (`app/actions/*.ts`).
+2. **50:30:20 budgeting tracker** (`/dashboard/budget`, `app/api/v1/**`): a **shared service
+   layer** (`lib/services/*` — plain `(userId, input)` functions throwing typed `ServiceError`s
+   from `lib/errors.ts`) consumed by **two adapters**: Server Actions (`app/actions/budget/*`)
+   for the web UI and **REST handlers** (`app/api/v1/**`, auth via `lib/api-auth.ts`) for iOS.
+   Details: `.agent/docs/features/budget-5030-20.md`.
 
-#### Server Actions over API Routes
-This codebase uses **Server Actions** (`"use server"`) instead of traditional API routes for all data mutations. Actions are located in `app/actions/*.ts` and are directly invoked from client components.
+### Core patterns
 
-**Pattern:**
+#### Server Actions
+Mutations are Server Actions (`"use server"`) in `app/actions/`, invoked directly from client
+components. Response shape: `{ error?: string } | { success?: string }`.
+
 ```typescript
-// app/actions/[feature].ts
 "use server"
 import { auth } from "@/auth"
 import { prisma } from "@/lib/db"
 
-export async function createResource(formData: FormData) {
+export async function createResource(prevState: State | undefined, formData: FormData) {
   const session = await auth()
-  if (!session?.user?.id) throw new Error("Unauthorized")
-
-  // Validate with Zod
-  // Perform database operation
-  // revalidatePath() to refresh UI
+  if (!session?.user?.id) return { error: "Unauthorized" }
+  // Zod-validate → prisma op (scoped by userId) → revalidatePath → return {success}|{error}
 }
 ```
 
-#### Data Isolation
-**CRITICAL**: All database queries MUST filter by `userId` to ensure data privacy. Never fetch data without scoping to the authenticated user.
-
+#### Data isolation (CRITICAL)
+**Every** DB query MUST filter by the authenticated `userId`. Never fetch unscoped.
 ```typescript
-// CORRECT
-const accounts = await prisma.bankAccount.findMany({
-  where: { userId: session.user.id }
-})
-
-// WRONG - exposes all users' data
-const accounts = await prisma.bankAccount.findMany()
+prisma.bankAccount.findMany({ where: { userId: session.user.id } })  // CORRECT
+prisma.bankAccount.findMany()                                        // WRONG — leaks all users
 ```
+The shared service layer enforces this by taking `userId` as its first argument.
 
-#### Database Client Singleton
-Use the singleton Prisma client from `lib/db.ts` to prevent connection exhaustion in serverless environments.
+#### Prisma client singleton
+Always `import { prisma } from "@/lib/db"` (avoids connection exhaustion).
 
-```typescript
-import { prisma } from "@/lib/db"
-```
+#### Decimal serialization
+Money is `Decimal` in Prisma. Before passing rows to Client Components, convert with
+`serializeDecimals()` from `lib/utils.ts` (Server Components do this at the page boundary).
 
-### Project Structure
-
+### Project structure
 ```
 app/
-├── actions/           # Server actions (business logic)
-│   ├── bank-account.ts
-│   ├── expense.ts
-│   ├── income.ts
-│   ├── investment.ts
-│   ├── budget.ts
-│   ├── subscription.ts
-│   ├── tax.ts
-│   ├── ai.ts
-│   ├── credit-card.ts
-│   ├── login.ts
-│   └── register.ts
-├── api/              # Route handlers (mainly NextAuth)
-├── dashboard/        # Protected app routes
-│   ├── accounts/
-│   ├── expenses/
-│   ├── income/
-│   ├── investments/
-│   ├── budgets/
-│   ├── subscriptions/
-│   ├── tax/
-│   └── ai/
-├── login/
-├── register/
-└── layout.tsx
+├── actions/            # Server Actions (business logic)
+│   ├── bank-account.ts  credit-card.ts  expense.ts  income.ts
+│   ├── investment.ts  budget.ts  subscription.ts  tax.ts  ai.ts
+│   ├── login.ts  register.ts
+│   └── budget/          # 50:30:20 action adapters (wrap lib/services/*)
+├── api/
+│   ├── auth/[...nextauth]   # NextAuth
+│   └── v1/**               # REST + delta-sync API for iOS (budget subsystem)
+├── dashboard/          # Protected app routes (one dir per feature, incl. credit-cards/, budget/)
+├── login/  register/  layout.tsx
 
 components/
-├── ui/               # Base Shadcn UI primitives
-├── bank-accounts/    # Feature-specific components
-├── expenses/
-├── income/
-├── investments/
-├── budgets/
-├── subscriptions/
-├── tax/
-└── dashboard/        # Layout components (sidebar, mobile-nav)
+├── ui/                 # Shadcn primitives
+├── <feature>/          # Feature components (bank-accounts/, credit-cards/, budget/, …)
+└── dashboard/          # sidebar.tsx, mobile-nav.tsx (nav lives here)
 
 lib/
-├── db.ts             # Prisma client singleton
-├── utils.ts          # Utility functions (cn, etc.)
-└── statement-parser.ts
-
+├── db.ts  utils.ts  statement-parser.ts
+├── errors.ts  api-auth.ts  blob.ts
+├── services/  validation/  analytics/  llm/   # 50:30:20 subsystem
 prisma/
-├── schema.prisma     # Database schema
-└── migrations/
-
-.agent/docs/          # Project documentation (READ BEFORE CODING)
-├── architecture.md
-├── frontend-design.md
-└── features/
-    ├── bank-accounts.md
-    ├── expenses.md
-    ├── income.md
-    ├── investments.md
-    ├── budgets.md
-    ├── subscriptions.md
-    ├── tax-planning.md
-    ├── authentication.md
-    └── ai-assistant.md
+├── schema.prisma  migrations/
+.agent/docs/            # READ BEFORE CODING (see doc map above)
 ```
 
 ## Documentation-First Workflow
 
-**IMPORTANT**: Before implementing any feature or making architectural changes, you MUST consult `.agent/docs/`:
+Before implementing a feature or architectural change:
+1. **Read** the relevant `.agent/docs/features/<feature>.md` and `architecture.md`.
+2. **Verify** your approach matches documented patterns.
+3. **Update** the docs (and this file) in the same change if you make them obsolete.
 
-1. **Search**: Read relevant documentation in `.agent/docs/features/` for the feature you're working on
-2. **Verify**: Ensure your approach aligns with documented architecture and design patterns
-3. **Update**: If your changes make documentation obsolete, update the relevant docs
-
-Key documentation files:
-- `.agent/docs/architecture.md` - System architecture and data flow
-- `.agent/docs/frontend-design.md` - UI/UX guidelines and design system
-- `.agent/docs/features/[feature].md` - Feature-specific schemas, API actions, and implementation details
-
-## Key Technical Details
+## Key technical details
 
 ### Authentication
-- **Strategy**: JWT-based sessions via NextAuth v5
-- **Provider**: Credentials (email + bcrypt hashed password)
-- **Session Access**: Use `import { auth } from "@/auth"` in Server Components/Actions
-- **Protected Pages**: Check session in page.tsx or layout.tsx before rendering
-- **User ID in Session**: Extended to include `session.user.id` for database queries
+- JWT sessions via NextAuth v5; Credentials provider (email + bcrypt).
+- `import { auth } from "@/auth"` in Server Components/Actions; `session.user.id` is available.
+- REST (`app/api/v1`) accepts the session cookie OR a bearer `ApiToken` via `requireApiUser`.
 
-### Database Schema Highlights
-- **User**: Central model, related to all financial entities
-- **BankAccount**: Core entity with support for transfers, statement uploads, reconciliation, analytics
-- **Expense/Income**: Transaction records with recurring support, tax deductibility flags
-- **Investment**: Multi-asset class tracking (Equity, Debt, PPF, NPS, Gold, etc.)
-- **Budget**: Period-based budgets with alert thresholds
-- **Subscription**: Auto-renewal tracking with reminder system
-- **TaxProfile & TaxDeduction**: Indian tax system support (Old/New regime)
+### Schema highlights
+- **User** is central; all financial entities relate to it and are `userId`-scoped.
+- Legacy: **BankAccount, CreditCard, Expense, Income, Investment, Budget, Subscription,
+  TaxProfile, TaxDeduction**.
+- 50:30:20: **BudgetProfile, Category, PaymentMode, Transaction, Receipt, StatementImport,
+  StagedTransaction, ApiToken** (see budget doc).
 
-### Enums (Important)
-- `AccountType`: SAVINGS, CURRENT, SALARY, OVERDRAFT
-- `IncomeType`: SALARY, FREELANCE, RENTAL, INTEREST, BONUS, GIFT, OTHER
-- `PaymentMethod`: CASH, BANK_TRANSFER, CREDIT_CARD, UPI, OTHER
-- `Frequency`: DAILY, WEEKLY, MONTHLY, QUARTERLY, YEARLY
-- `BudgetPeriod`: MONTHLY, QUARTERLY, YEARLY
-- `TaxRegime`: OLD, NEW
+### Enums
+`AccountType`(SAVINGS|CURRENT|SALARY|OVERDRAFT) · `IncomeType` · `PaymentMethod`(CASH|
+BANK_TRANSFER|CREDIT_CARD|UPI|OTHER) · `Frequency`(DAILY|WEEKLY|MONTHLY|QUARTERLY|YEARLY) ·
+`BudgetPeriod` · `TaxRegime`(OLD|NEW) · plus 50:30:20 enums (`CategoryType`, `ImportStatus`, …).
 
-### Form Validation Pattern
-All forms use React Hook Form + Zod resolver:
+### Form validation
+React Hook Form + `zodResolver`; shared budget schemas in `lib/validation/budget.ts`.
 
+### UI conventions
+- Import primitives from `@/components/ui/*`; compose with `cn()` from `lib/utils.ts`.
+- All components support dark mode (CSS variables: `bg-primary`, `text-foreground`, …).
+- Lucide icons; `animate-fade-in-up` with staggered delays for lists.
+
+### AI integration (dual-stack)
+- **Gemini** (`@google/generative-ai`, model `gemini-1.5-flash`) in `app/actions/ai.ts`:
+  the financial-advisor assistant and legacy PDF/CSV statement extraction.
+  ⚠️ The code reads `process.env.GEMINI_API_KEY` (NOT `GOOGLE_GEMINI_API_KEY`) — see gotchas.
+- **OpenRouter** (`lib/llm/openrouter.ts` + `extraction.ts`) for the 50:30:20 statement import:
+  structured JSON output, validate-retry-once-then-FAIL. Env: `OPENROUTER_API_KEY`,
+  `OPENROUTER_MODEL`, `OPENROUTER_VISION_MODEL`.
+- All AI keys are **server-side only**. Never expose them to the client.
+
+### File upload & statement parsing
+- Formats: CSV/XLSX (Papaparse/SheetJS, deterministic) and PDF (`pdf-parse` → text → AI).
+- Receipts/imports upload **client-side to Vercel Blob** via `app/api/v1/blob/upload` (files
+  never traverse a Server Action body); 10MB limit; process in-memory; never store passwords.
+- `pdf-parse`/`pdfjs-dist` are in `serverExternalPackages` (next.config.ts) — see gotchas.
+
+## Common patterns
+
+### Server Action response
 ```typescript
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
-
-const schema = z.object({
-  field: z.string().min(1, "Required")
-})
-
-const form = useForm({
-  resolver: zodResolver(schema),
-  defaultValues: {}
-})
+const session = await auth(); if (!session?.user?.id) return { error: "Unauthorized" }
+const v = schema.safeParse(raw); if (!v.success) return { error: v.error.issues[0].message }
+await prisma.model.create({ data: { ...v.data, userId: session.user.id } })
+revalidatePath("/dashboard/feature"); return { success: true }
 ```
 
-### UI Component Pattern
-Follow Shadcn UI conventions:
-- Import from `@/components/ui/*`
-- Use `cn()` from `lib/utils.ts` for conditional classes
-- Implement dark mode support using CSS variables (theme handled by `next-themes`)
-- Use Lucide icons consistently
+### Atomic balance updates
+Use `prisma.$transaction([...])` for any multi-row balance change (transfers, etc.).
 
-### Styling Guidelines
-- **Tailwind-first**: 90% of styling via utility classes
-- **Color System**: Use CSS variables (`bg-primary`, `text-foreground`, etc.)
-- **Dark Mode**: All components must support dark mode
-- **Spacing**: Follow Tailwind spacing scale (gap-4, p-6, p-8)
-- **Cards**: Use `Card` component with subtle borders/shadows
-- **Animations**: Use `animate-fade-in-up` for list items, stagger delays for smooth loading
+### Primary account/exactly-one invariants
+When setting a new primary, clear the flag on the user's other rows first (`updateMany`).
 
-### AI Integration (Google Gemini)
-- **Model**: Gemini 1.5 Flash (via `@google/generative-ai`)
-- **Use Cases**:
-  - Bank statement parsing (PDF/CSV extraction)
-  - Transaction categorization
-  - Natural language queries in AI assistant
-- **Location**: `app/actions/ai.ts`
-- **Pattern**: Send structured prompts, expect JSON responses
+## Keeping context current (anti-drift protocol)
 
-### File Upload & Statement Parsing
-Located in `lib/statement-parser.ts` and `app/actions/bank-account.ts`:
-- **Supported Formats**: CSV, XLSX, PDF
-- **Password Protection**: Handle password-protected PDFs (prompt user, decrypt in-memory)
-- **Parsing Strategy**:
-  - CSV/XLSX: Papaparse / SheetJS
-  - PDF: pdf-parse + Gemini AI extraction
-- **Security**: Never store passwords, process files in-memory, 10MB limit
+This file rotted once (claimed Gemini-only/S3/`feat/bank-account` while the code used
+OpenRouter/Vercel Blob/`main`). To prevent recurrence:
+- **Do not** record volatile facts here (current branch, exact versions, "as of last status").
+  Point at `git` / `package.json` instead.
+- When you add a feature dir under `app/dashboard/`, add a nav entry in **both**
+  `components/dashboard/sidebar.tsx` and `mobile-nav.tsx`, and a `.agent/docs/features/*.md`.
+- When you change the AI provider, storage backend, or API surface, update the Stack section.
+- `AGENTS.md` is a symlink to this file — edit this file, never a copy.
 
-## Common Patterns & Conventions
+## Known gotchas (recurring bug classes — check before reintroducing)
 
-### Server Action Response Pattern
-```typescript
-export async function actionName(formData: FormData) {
-  try {
-    const session = await auth()
-    if (!session?.user?.id) return { error: "Unauthorized" }
+1. **Zod `.optional()` rejects `null` from `FormData`.** `formData.get(x)` returns `null` when a
+   field is absent; `.optional()` only allows `undefined`. Coerce on read: `formData.get(x) || undefined`.
+   (Bit us in `expense.ts` for `subcategory`/`taxSection`/`notes`.)
+2. **Radix `<Select.Item>` forbids `value=""`.** Use a sentinel like `"default"` and normalize
+   to `""` on read/write (see `bank-accounts/edit-account-dialog.tsx`).
+3. **pdf-parse/pdfjs worker bundling.** "Cannot find module './pdf.worker.mjs'" → these must be
+   in `serverExternalPackages` (next.config.ts) so they're required from `node_modules` at runtime.
+4. **Supabase pooler is region-specific.** Host is `aws-1-<region>.pooler.supabase.com`, user is
+   `postgres.<project-ref>`; `tenant/user not found` means wrong region, not bad credentials.
+   The direct `db.<ref>.supabase.co` host is IPv6-only. URL-encode `@` in passwords as `%40`.
+5. **Gemini env var name mismatch.** `app/actions/ai.ts` reads `GEMINI_API_KEY`; `.env`/older docs
+   use `GOOGLE_GEMINI_API_KEY`. Set both, or fix the code, before expecting the assistant to work.
+6. **`next.config.ts` changes need a dev-server restart** (not hot-reloaded).
 
-    // Validation
-    const validated = schema.safeParse(Object.fromEntries(formData))
-    if (!validated.success) return { error: "Invalid input" }
+## Path aliases
+`@/*` → project root: `@/components/...`, `@/lib/db`, `@/auth`.
 
-    // Database operation
-    await prisma.model.create({ data: { ...validated.data, userId: session.user.id } })
+## Environment variables (`.env`, gitignored — never commit)
+- `DATABASE_URL` — pooled Postgres (pgbouncer, port 6543)
+- `DIRECT_URL` — direct Postgres for migrations (port 5432)
+- `NEXTAUTH_SECRET`, `NEXTAUTH_URL`
+- `GEMINI_API_KEY` (read by code) / `GOOGLE_GEMINI_API_KEY` (legacy name) — Gemini
+- `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_VISION_MODEL` — OpenRouter
+- `BLOB_READ_WRITE_TOKEN` — Vercel Blob
+- `EXTRACT_WORKER_SECRET`, `CRON_SECRET` — async extraction worker + cron sweep
+- `ENCRYPTION_KEY` — for encrypting sensitive fields
+- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` — Supabase client/REST
 
-    // Revalidate UI
-    revalidatePath("/dashboard/feature")
-    return { success: true }
-  } catch (error) {
-    return { error: "Something went wrong" }
-  }
-}
-```
+## Security
+- Scope every query by `userId`. Mask account/card numbers (`····1234`). Encrypt PAN/Aadhaar/
+  account numbers. Validate all input with Zod. Keep AI keys server-side. Soft-deleted reads
+  filter `deletedAt: null`; sync reads include deleted rows.
 
-### Atomic Balance Updates
-Always use Prisma transactions for operations affecting balances:
+## Common tasks
 
-```typescript
-await prisma.$transaction([
-  prisma.bankAccount.update({
-    where: { id: fromAccountId },
-    data: { currentBalance: { decrement: amount } }
-  }),
-  prisma.bankAccount.update({
-    where: { id: toAccountId },
-    data: { currentBalance: { increment: amount } }
-  }),
-  prisma.transferTransaction.create({ data: transferData })
-])
-```
+### Add a feature
+1. Read `.agent/docs/features/<feature>.md` (create it if new).
+2. Update `prisma/schema.prisma` (+ `prisma migrate dev`) if needed.
+3. Server actions in `app/actions/<feature>.ts` (or a `lib/services/*` fn + adapter for budget).
+4. Page in `app/dashboard/<feature>/page.tsx`; components in `components/<feature>/`.
+5. Nav entries in `sidebar.tsx` **and** `mobile-nav.tsx`.
+6. Update docs + this file if conventions changed.
 
-### Primary Account Management
-Ensure exactly one active account is marked as primary:
-```typescript
-// When setting new primary, remove from others
-if (isPrimary) {
-  await prisma.bankAccount.updateMany({
-    where: { userId, isPrimary: true, id: { not: accountId } },
-    data: { isPrimary: false }
-  })
-}
-```
-
-## Path Aliases
-TypeScript paths configured with `@/*` mapping to project root:
-```typescript
-import { Component } from "@/components/ui/component"
-import { prisma } from "@/lib/db"
-import { auth } from "@/auth"
-```
-
-## Environment Variables
-Required in `.env`:
-- `DATABASE_URL` - PostgreSQL connection string
-- `AUTH_SECRET` - NextAuth secret
-- `GOOGLE_GENERATIVE_AI_API_KEY` - Gemini API key
-- Additional variables as needed (check `.env.example` if available)
-
-## Git Workflow
-- **Main Branch**: `main`
-- **Current Branch**: `feat/bank-account` (as of last git status)
-- Commit messages should be clear and descriptive
-
-## Special Considerations
-
-### Security
-- Never expose account numbers (mask as `****1234`)
-- Encrypt sensitive fields in database (account numbers, PAN, Aadhaar)
-- Validate all inputs with Zod before database operations
-- Check session in all Server Actions
-- Scope all queries by userId
-
-### Performance
-- Use database aggregations for totals (avoid fetching all records)
-- Paginate large lists (default 50 items)
-- Cache total balances with path revalidation
-- Process large statement files asynchronously
-
-### Data Integrity
-- Use Prisma transactions for multi-step operations
-- Validate sufficient balance before transfers/expenses
-- Maintain audit trail for reconciliations
-- Hash-based duplicate detection for imports
-
-## Common Tasks
-
-### Adding a New Feature
-1. Read `.agent/docs/features/[feature].md` if it exists
-2. Update Prisma schema if needed (`prisma migrate dev`)
-3. Create server actions in `app/actions/[feature].ts`
-4. Create page in `app/dashboard/[feature]/page.tsx`
-5. Create components in `components/[feature]/`
-6. Update documentation in `.agent/docs/` if applicable
-
-### Adding a New UI Component
-1. Use Shadcn CLI: `npx shadcn@latest add [component]`
-2. Customize in `components/ui/[component].tsx`
-3. Follow design guidelines from `.agent/docs/frontend-design.md`
-
-### Debugging Database Issues
-```bash
-prisma studio           # Visual database browser
-prisma db push          # Quick schema sync (dev only)
-prisma migrate reset    # Reset database (WARNING: deletes data)
-```
-
-### Testing Auth Flow
-1. Register at `/register`
-2. Login at `/login`
-3. Access dashboard at `/dashboard`
-4. Session persists via JWT cookie
-
-
-Always use Context7 MCP when I need library/API documentation, code generation, setup or configuration steps without me having to explicitly ask.
+### Debug DB
+`prisma studio` · `prisma db push` (dev sync) · `prisma migrate reset` (⚠️ deletes data).

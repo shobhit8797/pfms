@@ -1,12 +1,19 @@
-# Documentation & Context
+# Cursor rules — PFMS
 
-Before starting any task, architectural change, or feature implementation, you MUST consult the project documentation located in `.agent/docs`.
+The canonical agent context for this repo is **`AGENTS.md`** (a symlink to `CLAUDE.md`).
+Read it first. It contains the stack, conventions, the data-isolation rule, known gotchas,
+and the env-var list.
 
-- **Features**: Specific feature logic and schemas are in `.agent/docs/features/`.
-- **Architecture**: System architecture and data flow are in `.agent/docs/architecture.md`.
-- **Design**: Frontend design guidelines are in `.agent/docs/frontend-design.md`.
+## Before any task
+1. **Read** `AGENTS.md`, then the doc map it points to in `.agent/docs/`:
+   - `.agent/docs/README.md` — index
+   - `.agent/docs/architecture.md` — system architecture & data flow
+   - `.agent/docs/frontend-design.md` — UI/UX & design system
+   - `.agent/docs/features/<feature>.md` — per-feature schema & actions
+2. **Verify** your plan matches the documented architecture and patterns.
+3. **Update** the relevant docs (and `CLAUDE.md`) in the same change if you make them obsolete.
 
-## Workflow
-1.  **Search**: Use `file_search` or `read_file` to find relevant documentation in `.agent/docs` related to the user's request.
-2.  **Verify**: Ensure your implementation plan aligns with the documented architecture and design patterns.
-3.  **Update**: If you make changes that render the documentation obsolete, update the relevant documentation files to keep them in sync with the code.
+## Non-negotiables (full list in AGENTS.md)
+- Every Prisma query MUST be scoped by the authenticated `userId`.
+- AI/API keys are server-side only — never ship them to the client.
+- Validate all input with Zod; remember `.optional()` rejects `null` from `FormData`.
