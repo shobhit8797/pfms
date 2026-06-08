@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { ArrowLeft, ArrowRightLeft, ArrowRight } from "lucide-react"
+import { serializeDecimals } from "@/lib/utils"
 
 interface TransfersPageProps {
   searchParams: Promise<{ from?: string }>
@@ -21,7 +22,11 @@ interface TransfersPageProps {
 export default async function TransfersPage({ searchParams }: TransfersPageProps) {
   const { from } = await searchParams
 
-  const [accounts, transfers] = await Promise.all([getBankAccounts("ACTIVE"), getTransfers()])
+  const [accountsRaw, transfersRaw] = await Promise.all([getBankAccounts("ACTIVE"), getTransfers()])
+
+  // Serialize Decimal fields for Client Components
+  const accounts = serializeDecimals(accountsRaw)
+  const transfers = serializeDecimals(transfersRaw)
 
   const formatCurrency = (amount: number) => {
     return `₹${Math.abs(amount).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`

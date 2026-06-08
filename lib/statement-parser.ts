@@ -221,12 +221,12 @@ export function parseExcel(buffer: ArrayBuffer): StatementParseResult {
 
 export async function parsePDF(buffer: Buffer): Promise<StatementParseResult> {
   try {
-    // Dynamic import for pdf-parse
+    // Dynamic import to prevent client-side bundling (server-only function)
     const { PDFParse } = await import("pdf-parse")
-    const parser = new PDFParse({ data: new Uint8Array(buffer) })
-    const textResult = await parser.getText()
+    const parser = new PDFParse({ data: buffer })
+    const result = await parser.getText()
 
-    const text = textResult.text
+    const text = result.text
 
     // Try to extract transactions using regex patterns
     const transactions = extractTransactionsFromText(text)

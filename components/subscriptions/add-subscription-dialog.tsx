@@ -38,6 +38,9 @@ const SUBSCRIPTION_CATEGORIES = [
 export function AddSubscriptionDialog() {
   const [open, setOpen] = useState(false)
   const [autoRenewal, setAutoRenewal] = useState(true)
+  const [billingCycle, setBillingCycle] = useState("MONTHLY")
+  const [category, setCategory] = useState("")
+  const [paymentMethod, setPaymentMethod] = useState("Credit Card")
 
   async function handleSubmit(formData: FormData) {
     const result = await createSubscription(undefined, formData)
@@ -46,6 +49,11 @@ export function AddSubscriptionDialog() {
     } else if (result?.success) {
       toast.success(result.success)
       setOpen(false)
+      // Reset form state
+      setBillingCycle("MONTHLY")
+      setCategory("")
+      setPaymentMethod("Credit Card")
+      setAutoRenewal(true)
     }
   }
 
@@ -77,7 +85,7 @@ export function AddSubscriptionDialog() {
             </div>
             <div className="grid gap-2">
               <Label htmlFor="billingCycle">Billing Cycle</Label>
-              <Select name="billingCycle" defaultValue="MONTHLY" required>
+              <Select value={billingCycle} onValueChange={setBillingCycle} required>
                 <SelectTrigger>
                   <SelectValue placeholder="Select cycle" />
                 </SelectTrigger>
@@ -87,6 +95,7 @@ export function AddSubscriptionDialog() {
                   <SelectItem value="QUARTERLY">Quarterly</SelectItem>
                 </SelectContent>
               </Select>
+              <input type="hidden" name="billingCycle" value={billingCycle} />
             </div>
           </div>
 
@@ -114,7 +123,7 @@ export function AddSubscriptionDialog() {
 
           <div className="grid gap-2">
             <Label htmlFor="category">Category</Label>
-             <Select name="category" required>
+             <Select value={category} onValueChange={setCategory} required>
                 <SelectTrigger>
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>
@@ -126,11 +135,12 @@ export function AddSubscriptionDialog() {
                   ))}
                 </SelectContent>
               </Select>
+              <input type="hidden" name="category" value={category} />
           </div>
           
            <div className="grid gap-2">
             <Label htmlFor="paymentMethod">Payment Method</Label>
-            <Select name="paymentMethod" defaultValue="Credit Card" required>
+            <Select value={paymentMethod} onValueChange={setPaymentMethod} required>
                <SelectTrigger>
                   <SelectValue placeholder="Select method" />
                 </SelectTrigger>
@@ -141,6 +151,7 @@ export function AddSubscriptionDialog() {
                   <SelectItem value="Net Banking">Net Banking</SelectItem>
                 </SelectContent>
             </Select>
+            <input type="hidden" name="paymentMethod" value={paymentMethod} />
           </div>
 
           <div className="flex items-center space-x-2">
@@ -151,6 +162,7 @@ export function AddSubscriptionDialog() {
               onCheckedChange={(checked) => setAutoRenewal(checked as boolean)}
             />
             <Label htmlFor="autoRenewal">Auto Renewal</Label>
+            <input type="hidden" name="autoRenewal" value={autoRenewal ? "on" : ""} />
           </div>
 
           <DialogFooter>

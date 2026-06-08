@@ -31,7 +31,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { parseCSV, parseExcel, parsePDF, ParsedTransaction } from "@/lib/statement-parser"
+import { parseCSV, parseExcel, ParsedTransaction } from "@/lib/statement-parser"
+import { parseStatementFile } from "@/app/actions/bank-account"
 import { toast } from "sonner"
 import {
   Upload,
@@ -157,7 +158,8 @@ export function StatementUploadDialog({
         } else if (ext === "pdf") {
           const buffer = await selectedFile.arrayBuffer()
           setProgress(30)
-          result = await parsePDF(Buffer.from(buffer))
+          // Use server action for PDF parsing to avoid browser worker issues
+          result = await parseStatementFile(buffer, selectedFile.name)
 
           if (result.error === "PDF_PASSWORD_REQUIRED") {
             setStep("password")
@@ -177,7 +179,7 @@ export function StatementUploadDialog({
 
         if (result && result.success && result.transactions.length > 0) {
           setTransactions(result.transactions)
-          setSelectedTransactions(new Set(result.transactions.map((_, i) => i)))
+          setSelectedTransactions(new Set(result.transactions.map((_: unknown, i: number) => i)))
           setProgress(100)
           setStep("preview")
         } else {

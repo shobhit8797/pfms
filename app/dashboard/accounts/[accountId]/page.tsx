@@ -11,9 +11,11 @@ import { AccountDetailHeader } from "@/components/bank-accounts/account-detail-h
 import { AccountAnalyticsDashboard } from "@/components/bank-accounts/account-analytics-dashboard"
 import { TransactionHistoryTable } from "@/components/bank-accounts/transaction-history-table"
 import { BalanceAlertBanner } from "@/components/bank-accounts/balance-alert-banner"
+import { StatementUploadSection } from "@/components/bank-accounts/statement-upload-section"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft, Upload, ArrowRightLeft } from "lucide-react"
+import { serializeDecimals } from "@/lib/utils"
 
 interface AccountDetailPageProps {
   params: Promise<{ accountId: string }>
@@ -40,6 +42,13 @@ export default async function AccountDetailPage({ params, searchParams }: Accoun
     notFound()
   }
 
+  // Serialize Decimal fields for Client Components
+  const serializedAccount = serializeDecimals(account)
+  const serializedAnalytics = serializeDecimals(analytics)
+  const serializedBalanceHistory = serializeDecimals(balanceHistory)
+  const serializedAlerts = serializeDecimals(alerts)
+  const serializedTransactionHistory = serializeDecimals(transactionHistory)
+
   const defaultTab = tab || "overview"
 
   return (
@@ -54,10 +63,10 @@ export default async function AccountDetailPage({ params, searchParams }: Accoun
           </Button>
           <div>
             <h1 className="font-heading text-2xl md:text-3xl font-semibold tracking-tight">
-              {account.accountName}
+              {serializedAccount.accountName}
             </h1>
             <p className="text-muted-foreground text-sm">
-              {account.bankName} · ····{account.accountNumber.slice(-4)}
+              {serializedAccount.bankName} · ····{serializedAccount.accountNumber.slice(-4)}
             </p>
           </div>
         </div>
@@ -78,10 +87,10 @@ export default async function AccountDetailPage({ params, searchParams }: Accoun
       </div>
 
       {/* Alerts Banner */}
-      {alerts.length > 0 && <BalanceAlertBanner alerts={alerts} />}
+      {serializedAlerts.length > 0 && <BalanceAlertBanner alerts={serializedAlerts} />}
 
       {/* Account Header */}
-      <AccountDetailHeader account={account} analytics={analytics} />
+      <AccountDetailHeader account={serializedAccount} analytics={serializedAnalytics} />
 
       {/* Tabs */}
       <Tabs defaultValue={defaultTab} className="space-y-6">
@@ -94,16 +103,16 @@ export default async function AccountDetailPage({ params, searchParams }: Accoun
 
         <TabsContent value="overview" className="space-y-6">
           <AccountAnalyticsDashboard
-            analytics={analytics}
-            balanceHistory={balanceHistory}
+            analytics={serializedAnalytics}
+            balanceHistory={serializedBalanceHistory}
             compact
           />
           <TransactionHistoryTable
-            transactions={transactionHistory.transactions}
+            transactions={serializedTransactionHistory.transactions}
             showPagination={false}
             limit={10}
           />
-          {transactionHistory.total > 10 && (
+          {serializedTransactionHistory.total > 10 && (
             <div className="flex justify-center">
               <Button variant="outline" asChild>
                 <Link href={`/dashboard/accounts/${accountId}?tab=transactions`}>
@@ -116,32 +125,19 @@ export default async function AccountDetailPage({ params, searchParams }: Accoun
 
         <TabsContent value="transactions">
           <TransactionHistoryTable
-            transactions={transactionHistory.transactions}
-            total={transactionHistory.total}
-            pages={transactionHistory.pages}
+            transactions={serializedTransactionHistory.transactions}
+            total={serializedTransactionHistory.total}
+            pages={serializedTransactionHistory.pages}
             showPagination
           />
         </TabsContent>
 
         <TabsContent value="analytics">
-          <AccountAnalyticsDashboard analytics={analytics} balanceHistory={balanceHistory} />
+          <AccountAnalyticsDashboard analytics={serializedAnalytics} balanceHistory={serializedBalanceHistory} />
         </TabsContent>
 
         <TabsContent value="upload">
-          <div className="flex h-[400px] items-center justify-center rounded-xl border border-dashed border-border bg-card/50">
-            <div className="text-center">
-              <Upload className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="font-heading text-lg font-semibold">Statement Upload</h3>
-              <p className="text-sm text-muted-foreground mt-2 max-w-sm">
-                Upload your bank statement (CSV, Excel, or PDF) to automatically import
-                transactions.
-              </p>
-              <Button className="mt-4">
-                <Upload className="h-4 w-4 mr-2" />
-                Select File
-              </Button>
-            </div>
-          </div>
+          <StatementUploadSection accountId={accountId} />
         </TabsContent>
       </Tabs>
     </div>

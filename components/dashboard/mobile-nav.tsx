@@ -13,6 +13,7 @@ import {
   Sparkles,
   LogOut,
   Landmark,
+  PiggyBank,
   Menu
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -39,6 +40,7 @@ const navItems = [
   { href: "/dashboard/accounts", label: "Accounts", icon: Landmark },
   { href: "/dashboard/income", label: "Income", icon: Wallet },
   { href: "/dashboard/expenses", label: "Expenses", icon: CreditCard },
+  { href: "/dashboard/budget", label: "50:30:20", icon: PiggyBank },
   { href: "/dashboard/investments", label: "Investments", icon: TrendingUp },
   { href: "/dashboard/subscriptions", label: "Subscriptions", icon: Sparkles },
   { href: "/dashboard/budgets", label: "Budgets", icon: PieChart },
@@ -142,6 +144,12 @@ export function MobileNav({ user }: MobileNavProps) {
     </Sheet>
   )
 }
+
+
+
+
+
+
 
 
 

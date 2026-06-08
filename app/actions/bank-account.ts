@@ -1152,3 +1152,38 @@ export async function getTransfers(
     orderBy: { transferDate: "desc" },
   })
 }
+
+// ============================================================================
+// Statement Upload & Parsing
+// ============================================================================
+
+export async function parseStatementFile(
+  fileBuffer: ArrayBuffer,
+  fileName: string
+): Promise<any> {
+  const session = await auth()
+  if (!session?.user?.id) {
+    return { error: "Unauthorized" }
+  }
+
+  try {
+    const ext = fileName.split(".").pop()?.toLowerCase()
+
+    if (ext === "pdf") {
+      // Import parsePDF dynamically to ensure it runs on server
+      const { parsePDF } = await import("@/lib/statement-parser")
+      const buffer = Buffer.from(fileBuffer)
+      const result = await parsePDF(buffer)
+      return result
+    } else {
+      return { error: "Please use CSV/Excel parsing on the client side" }
+    }
+  } catch (error) {
+    console.error("Parse statement error:", error)
+    return {
+      success: false,
+      transactions: [],
+      error: error instanceof Error ? error.message : "Failed to parse file",
+    }
+  }
+}

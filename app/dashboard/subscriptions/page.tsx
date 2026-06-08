@@ -12,12 +12,16 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { XCircle, Sparkles, Clock, CreditCard, AlertTriangle } from "lucide-react"
+import { serializeDecimals } from "@/lib/utils"
 
 export default async function SubscriptionsPage() {
   const session = await auth()
   if (!session) redirect("/login")
 
-  const subscriptions = await getSubscriptions()
+  const subscriptionsRaw = await getSubscriptions()
+
+  // Serialize Decimal fields for Client Components
+  const subscriptions = serializeDecimals(subscriptionsRaw)
 
   // Calculate monthly burn
   const monthlyBurn = subscriptions.reduce((acc, sub) => {

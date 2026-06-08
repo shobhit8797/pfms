@@ -72,7 +72,7 @@ export function EditAccountDialog({ account, open, onOpenChange }: EditAccountDi
   }
 
   const colorOptions = [
-    { value: "", label: "Default" },
+    { value: "default", label: "Default" },
     { value: "emerald", label: "Emerald" },
     { value: "blue", label: "Blue" },
     { value: "violet", label: "Violet" },
@@ -199,8 +199,10 @@ export function EditAccountDialog({ account, open, onOpenChange }: EditAccountDi
               Color
             </Label>
             <Select
-              value={formData.color}
-              onValueChange={(value) => setFormData({ ...formData, color: value })}
+              value={formData.color || "default"}
+              onValueChange={(value) =>
+                setFormData({ ...formData, color: value === "default" ? "" : value })
+              }
             >
               <SelectTrigger className="col-span-3">
                 <SelectValue placeholder="Choose accent color" />
@@ -209,7 +211,7 @@ export function EditAccountDialog({ account, open, onOpenChange }: EditAccountDi
                 {colorOptions.map((color) => (
                   <SelectItem key={color.value} value={color.value}>
                     <div className="flex items-center gap-2">
-                      {color.value && (
+                      {color.value && color.value !== "default" && (
                         <div
                           className={`w-3 h-3 rounded-full bg-${color.value}-500`}
                           style={{

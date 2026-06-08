@@ -4,12 +4,17 @@ import { AddAccountDialog } from "@/components/bank-accounts/add-account-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Landmark, TrendingUp, TrendingDown, Wallet } from "lucide-react"
+import { serializeDecimals } from "@/lib/utils"
 
 export default async function AccountsPage() {
-  const [activeAccounts, inactiveAccounts] = await Promise.all([
+  const [activeAccountsRaw, inactiveAccountsRaw] = await Promise.all([
     getBankAccounts("ACTIVE"),
     getBankAccounts("INACTIVE"),
   ])
+
+  // Serialize Decimal fields for Client Components
+  const activeAccounts = serializeDecimals(activeAccountsRaw)
+  const inactiveAccounts = serializeDecimals(inactiveAccountsRaw)
 
   const allAccounts = [...activeAccounts, ...inactiveAccounts]
 

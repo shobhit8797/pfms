@@ -19,12 +19,16 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { TrendingUp, TrendingDown, Wallet, PieChart } from "lucide-react"
+import { serializeDecimals } from "@/lib/utils"
 
 export default async function InvestmentsPage() {
   const session = await auth()
   if (!session) redirect("/login")
 
-  const investments = await getInvestments()
+  const investmentsRaw = await getInvestments()
+
+  // Serialize Decimal fields for Client Components
+  const investments = serializeDecimals(investmentsRaw)
 
   // Calculate totals
   const totalInvested = investments.reduce((acc, inv) => acc + (Number(inv.purchasePrice) * Number(inv.quantity)), 0)

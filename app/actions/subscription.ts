@@ -44,7 +44,10 @@ export async function createSubscription(prevState: SubscriptionState | undefine
   const validated = subscriptionSchema.safeParse(rawData)
 
   if (!validated.success) {
-    return { error: "Invalid input data" }
+    console.error("Subscription validation errors:", validated.error.issues)
+    // Return the first validation error for better UX
+    const firstError = validated.error.issues[0]
+    return { error: `${firstError.path.join(".")}: ${firstError.message}` }
   }
 
   const data = validated.data
