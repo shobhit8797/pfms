@@ -111,7 +111,7 @@ app/
 ├── api/
 │   ├── auth/[...nextauth]   # NextAuth
 │   └── v1/**               # REST + delta-sync API for iOS (budget subsystem)
-├── dashboard/          # Protected app routes (one dir per feature, incl. credit-cards/, budget/)
+├── dashboard/          # Protected app routes (one dir per feature, incl. credit-cards/, budget/, insights/)
 ├── login/  register/  layout.tsx
 
 components/

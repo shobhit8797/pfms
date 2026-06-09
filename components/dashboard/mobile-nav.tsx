@@ -15,6 +15,7 @@ import {
   Landmark,
   PiggyBank,
   WalletCards,
+  LineChart,
   Menu
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -38,6 +39,7 @@ interface MobileNavProps {
 
 const navItems = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
+  { href: "/dashboard/insights", label: "Insights", icon: LineChart },
   { href: "/dashboard/accounts", label: "Accounts", icon: Landmark },
   { href: "/dashboard/credit-cards", label: "Credit Cards", icon: WalletCards },
   { href: "/dashboard/income", label: "Income", icon: Wallet },

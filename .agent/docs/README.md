@@ -9,6 +9,7 @@ implementing features or architectural changes (see `/AGENTS.md` → "Documentat
 |---|---|
 | `/AGENTS.md` (→ `/CLAUDE.md`) | Stack, conventions, data-isolation rule, known gotchas, env vars |
 | `architecture.md` | System architecture, data flow, layering |
+| `features/insights.md` | Insights dashboard: cross-feature analytics aggregation |
 | `frontend-design.md` | UI/UX guidelines, design system, component conventions |
 | `features/bank-accounts.md` | Bank accounts: schema, actions, transfers, statements, analytics |
 | `features/credit-cards.md` | Credit cards: schema, actions, UI |
