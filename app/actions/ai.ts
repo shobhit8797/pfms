@@ -3,13 +3,16 @@
 import { auth } from "@/auth"
 import { GoogleGenerativeAI } from "@google/generative-ai"
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "")
+// Accept either env var name — the repo's .env historically used GOOGLE_GEMINI_API_KEY
+// while this code read GEMINI_API_KEY, which silently disabled the AI assistant.
+const GEMINI_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY
+const genAI = new GoogleGenerativeAI(GEMINI_KEY || "")
 
 export async function askFinancialAdvisor(query: string, contextData: any) {
   const session = await auth()
   if (!session?.user?.id) return { error: "Unauthorized" }
 
-  if (!process.env.GEMINI_API_KEY) {
+  if (!GEMINI_KEY) {
       return { error: "Gemini API Key not configured" }
   }
 
@@ -43,7 +46,7 @@ export async function processAndAnalyzeStatement(formData: FormData) {
     const session = await auth()
     if (!session?.user?.id) return { error: "Unauthorized" }
 
-    if (!process.env.GEMINI_API_KEY) {
+    if (!GEMINI_KEY) {
         return { error: "Gemini API Key not configured" }
     }
 

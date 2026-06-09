@@ -27,8 +27,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           const { email, password } = parsedCredentials.data;
           const user = await prisma.user.findUnique({ where: { email } });
           if (!user) return null;
-          
-          // Note: In a real app, use bcrypt.compare
+
           // If user has no password (e.g. OAuth), return null
           if (!user.password) return null;
 
@@ -36,7 +35,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           if (passwordsMatch) return user;
         }
 
-        console.log("Invalid credentials");
         return null;
       },
     }),
