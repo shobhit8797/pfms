@@ -12,9 +12,11 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { format } from "date-fns"
-import { Wallet, ArrowUpRight, TrendingUp } from "lucide-react"
+import { Wallet, ArrowUpRight, TrendingUp, Download } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { serializeDecimals } from "@/lib/utils"
 import { DeleteEntryButton } from "@/components/shared/delete-entry-button"
+import { EditIncomeDialog } from "@/components/income/edit-income-dialog"
 
 export default async function IncomePage() {
   const [incomesRaw, accountsRaw] = await Promise.all([
@@ -51,7 +53,17 @@ export default async function IncomePage() {
             Track your earnings and revenue sources
           </p>
         </div>
-        <AddIncomeDialog accounts={accounts} />
+        <div className="flex items-center gap-2">
+          {incomes.length > 0 && (
+            <Button variant="outline" asChild>
+              <a href="/api/export/income" download>
+                <Download className="mr-2 h-4 w-4" />
+                Export CSV
+              </a>
+            </Button>
+          )}
+          <AddIncomeDialog accounts={accounts} />
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -184,12 +196,30 @@ export default async function IncomePage() {
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      <DeleteEntryButton
-                        id={income.id}
-                        kind="income"
-                        label={income.source}
-                        amount={`₹${Number(income.amount).toLocaleString('en-IN')}`}
-                      />
+                      <div className="flex items-center justify-end gap-1">
+                        <EditIncomeDialog
+                          income={{
+                            id: income.id,
+                            source: income.source,
+                            amount: Number(income.amount),
+                            incomeDate: income.incomeDate,
+                            type: income.type,
+                            isRecurring: income.isRecurring,
+                            frequency: income.frequency,
+                            isTaxable: income.isTaxable,
+                            bankAccountId: income.bankAccountId,
+                            category: income.category,
+                            notes: income.notes,
+                          }}
+                          accounts={accounts}
+                        />
+                        <DeleteEntryButton
+                          id={income.id}
+                          kind="income"
+                          label={income.source}
+                          amount={`₹${Number(income.amount).toLocaleString('en-IN')}`}
+                        />
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

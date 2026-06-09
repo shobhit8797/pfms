@@ -5,6 +5,7 @@ import { getBankAccounts } from "@/app/actions/bank-account"
 import { getCreditCards } from "@/app/actions/credit-card"
 import { AddExpenseDialog } from "@/components/expenses/add-expense-dialog"
 import { DeleteEntryButton } from "@/components/shared/delete-entry-button"
+import { EditExpenseDialog } from "@/components/expenses/edit-expense-dialog"
 import { format } from "date-fns"
 import {
   Table,
@@ -16,7 +17,8 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { CreditCard, ArrowDownRight, Receipt } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { CreditCard, ArrowDownRight, Receipt, Download } from "lucide-react"
 import { serializeDecimals } from "@/lib/utils"
 
 export default async function ExpensesPage() {
@@ -55,7 +57,17 @@ export default async function ExpensesPage() {
             Track and manage your spending
           </p>
         </div>
-        <AddExpenseDialog bankAccounts={bankAccounts} creditCards={creditCards} />
+        <div className="flex items-center gap-2">
+          {expenses.length > 0 && (
+            <Button variant="outline" asChild>
+              <a href="/api/export/expenses" download>
+                <Download className="mr-2 h-4 w-4" />
+                Export CSV
+              </a>
+            </Button>
+          )}
+          <AddExpenseDialog bankAccounts={bankAccounts} creditCards={creditCards} />
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -177,12 +189,33 @@ export default async function ExpensesPage() {
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      <DeleteEntryButton
-                        id={expense.id}
-                        kind="expense"
-                        label={expense.description}
-                        amount={`₹${Number(expense.amount).toLocaleString('en-IN')}`}
-                      />
+                      <div className="flex items-center justify-end gap-1">
+                        <EditExpenseDialog
+                          expense={{
+                            id: expense.id,
+                            amount: Number(expense.amount),
+                            expenseDate: expense.expenseDate,
+                            category: expense.category,
+                            description: expense.description,
+                            paymentMethod: expense.paymentMethod,
+                            bankAccountId: expense.bankAccountId,
+                            creditCardId: expense.creditCardId,
+                            isRecurring: expense.isRecurring,
+                            frequency: expense.frequency,
+                            isTaxDeductible: expense.isTaxDeductible,
+                            taxSection: expense.taxSection,
+                            notes: expense.notes,
+                          }}
+                          bankAccounts={bankAccounts}
+                          creditCards={creditCards}
+                        />
+                        <DeleteEntryButton
+                          id={expense.id}
+                          kind="expense"
+                          label={expense.description}
+                          amount={`₹${Number(expense.amount).toLocaleString('en-IN')}`}
+                        />
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))

@@ -214,3 +214,128 @@ export async function deleteExpense(expenseId: string) {
         return { error: "Failed to delete expense" }
     }
 }
+
+export async function updateExpense(
+  expenseId: string,
+  formData: FormData
+): Promise<ExpenseState> {
+  const session = await auth()
+  if (!session?.user?.id) return { error: "Unauthorized" }
+  const userId = session.user.id
+
+  const rawData = {
+    amount: formData.get("amount"),
+    expenseDate: formData.get("expenseDate"),
+    category: formData.get("category"),
+    subcategory: formData.get("subcategory") || undefined,
+    description: formData.get("description"),
+    paymentMethod: formData.get("paymentMethod"),
+    bankAccountId: formData.get("bankAccountId") || undefined,
+    creditCardId: formData.get("creditCardId") || undefined,
+    isRecurring: formData.get("isRecurring") === "on",
+    frequency: formData.get("frequency") || undefined,
+    isBusinessExpense: formData.get("isBusinessExpense") === "on",
+    isTaxDeductible: formData.get("isTaxDeductible") === "on",
+    taxSection: formData.get("taxSection") || undefined,
+    notes: formData.get("notes") || undefined,
+  }
+
+  const validated = expenseSchema.safeParse(rawData)
+  if (!validated.success) {
+    return { error: validated.error.issues[0]?.message || "Invalid input data" }
+  }
+  const data = validated.data
+
+  if (data.paymentMethod === "BANK_TRANSFER" && !data.bankAccountId) {
+    return { error: "Bank account is required for bank transfer" }
+  }
+  if (data.paymentMethod === "CREDIT_CARD" && !data.creditCardId) {
+    return { error: "Credit card is required for credit card payment" }
+  }
+
+  // Verify ownership of any newly linked account/card
+  if (data.bankAccountId) {
+    const owned = await prisma.bankAccount.findUnique({
+      where: { id: data.bankAccountId, userId },
+      select: { id: true },
+    })
+    if (!owned) return { error: "Bank account not found" }
+  }
+  if (data.creditCardId) {
+    const owned = await prisma.creditCard.findUnique({
+      where: { id: data.creditCardId, userId },
+      select: { id: true },
+    })
+    if (!owned) return { error: "Credit card not found" }
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const existing = await tx.expense.findUnique({ where: { id: expenseId, userId } })
+      if (!existing) throw new Error("Expense not found")
+
+      // Revert the OLD balance/outstanding effect
+      if (existing.paymentMethod === "BANK_TRANSFER" && existing.bankAccountId) {
+        await tx.bankAccount.updateMany({
+          where: { id: existing.bankAccountId, userId },
+          data: { currentBalance: { increment: existing.amount } },
+        })
+      }
+      if (existing.paymentMethod === "CREDIT_CARD" && existing.creditCardId) {
+        await tx.creditCard.updateMany({
+          where: { id: existing.creditCardId, userId },
+          data: {
+            currentOutstanding: { decrement: existing.amount },
+            availableCredit: { increment: existing.amount },
+          },
+        })
+      }
+
+      // Apply the NEW effect
+      if (data.paymentMethod === "BANK_TRANSFER" && data.bankAccountId) {
+        await tx.bankAccount.updateMany({
+          where: { id: data.bankAccountId, userId },
+          data: { currentBalance: { decrement: data.amount } },
+        })
+      }
+      if (data.paymentMethod === "CREDIT_CARD" && data.creditCardId) {
+        await tx.creditCard.updateMany({
+          where: { id: data.creditCardId, userId },
+          data: {
+            currentOutstanding: { increment: data.amount },
+            availableCredit: { decrement: data.amount },
+          },
+        })
+      }
+
+      await tx.expense.update({
+        where: { id: expenseId },
+        data: {
+          amount: data.amount,
+          expenseDate: data.expenseDate,
+          category: data.category,
+          subcategory: data.subcategory,
+          description: data.description,
+          paymentMethod: data.paymentMethod,
+          bankAccountId: data.paymentMethod === "BANK_TRANSFER" ? data.bankAccountId : null,
+          creditCardId: data.paymentMethod === "CREDIT_CARD" ? data.creditCardId : null,
+          isRecurring: data.isRecurring || false,
+          frequency: data.isRecurring ? data.frequency : null,
+          isBusinessExpense: data.isBusinessExpense || false,
+          isTaxDeductible: data.isTaxDeductible || false,
+          taxSection: data.taxSection,
+          notes: data.notes,
+        },
+      })
+    })
+
+    revalidatePath("/dashboard/expenses")
+    revalidatePath("/dashboard/accounts")
+    revalidatePath("/dashboard")
+    return { success: "Expense updated successfully" }
+  } catch (error) {
+    console.error("Update expense error:", error)
+    const msg = error instanceof Error ? error.message : ""
+    return { error: msg === "Expense not found" ? msg : "Failed to update expense" }
+  }
+}

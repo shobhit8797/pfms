@@ -4,6 +4,10 @@
     {
       "path": "/api/v1/internal/extract-sweep",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/v1/internal/recurring",
+      "schedule": "0 2 * * *"
     }
   ]
 }

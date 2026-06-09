@@ -14,7 +14,8 @@ import {
   Landmark,
   PiggyBank,
   WalletCards,
-  LineChart
+  LineChart,
+  Search
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -30,6 +31,7 @@ interface SidebarProps {
 
 const navItems = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
+  { href: "/dashboard/search", label: "Search", icon: Search },
   { href: "/dashboard/insights", label: "Insights", icon: LineChart },
   { href: "/dashboard/accounts", label: "Accounts", icon: Landmark },
   { href: "/dashboard/credit-cards", label: "Credit Cards", icon: WalletCards },
