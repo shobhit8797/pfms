@@ -4,6 +4,7 @@ import { getExpenses } from "@/app/actions/expense"
 import { getBankAccounts } from "@/app/actions/bank-account"
 import { getCreditCards } from "@/app/actions/credit-card"
 import { AddExpenseDialog } from "@/components/expenses/add-expense-dialog"
+import { DeleteEntryButton } from "@/components/shared/delete-entry-button"
 import { format } from "date-fns"
 import {
   Table,
@@ -131,12 +132,13 @@ export default async function ExpensesPage() {
                 <TableHead className="text-muted-foreground">Category</TableHead>
                 <TableHead className="text-muted-foreground">Payment</TableHead>
                 <TableHead className="text-right text-muted-foreground">Amount</TableHead>
+                <TableHead className="w-12"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {expenses.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center h-32 text-muted-foreground">
+                  <TableCell colSpan={6} className="text-center h-32 text-muted-foreground">
                     <div className="flex flex-col items-center gap-2">
                       <Receipt className="w-8 h-8 text-muted-foreground/50" />
                       <p>No expenses recorded yet</p>
@@ -173,6 +175,14 @@ export default async function ExpensesPage() {
                       <span className="font-mono font-semibold text-destructive">
                         -₹{Number(expense.amount).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                       </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <DeleteEntryButton
+                        id={expense.id}
+                        kind="expense"
+                        label={expense.description}
+                        amount={`₹${Number(expense.amount).toLocaleString('en-IN')}`}
+                      />
                     </TableCell>
                   </TableRow>
                 ))

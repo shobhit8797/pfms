@@ -31,7 +31,10 @@ export default async function SubscriptionsPage() {
     return acc + monthlyAmount
   }, 0)
 
-  const upcomingRenewals = subscriptions.filter(s => differenceInDays(s.nextBillingDate, new Date()) <= 7)
+  const upcomingRenewals = subscriptions.filter(s => {
+    const days = differenceInDays(s.nextBillingDate, new Date())
+    return days >= 0 && days <= 7
+  })
 
   return (
     <div className="p-6 md:p-8 space-y-8">
@@ -116,7 +119,8 @@ export default async function SubscriptionsPage() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {subscriptions.map((sub, index) => {
             const daysUntilRenewal = differenceInDays(sub.nextBillingDate, new Date())
-            const isRenewingSoon = daysUntilRenewal <= 7
+            const isOverdue = daysUntilRenewal < 0
+            const isRenewingSoon = daysUntilRenewal >= 0 && daysUntilRenewal <= 7
             
             return (
               <Card 
@@ -135,7 +139,15 @@ export default async function SubscriptionsPage() {
                     {isRenewingSoon && (
                       <div className="flex items-center gap-1 text-chart-5 bg-chart-5/10 px-2 py-1 rounded-lg">
                         <AlertTriangle className="w-3 h-3" />
-                        <span className="text-xs font-medium">{daysUntilRenewal}d</span>
+                        <span className="text-xs font-medium">
+                          {daysUntilRenewal === 0 ? "Today" : `${daysUntilRenewal}d`}
+                        </span>
+                      </div>
+                    )}
+                    {isOverdue && (
+                      <div className="flex items-center gap-1 text-destructive bg-destructive/10 px-2 py-1 rounded-lg">
+                        <AlertTriangle className="w-3 h-3" />
+                        <span className="text-xs font-medium">Overdue</span>
                       </div>
                     )}
                   </div>

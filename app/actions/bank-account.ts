@@ -10,7 +10,10 @@ import {
   BalanceSnapshot,
   BalanceAlert,
   TransferTransaction,
+  IncomeType,
+  PaymentMethod,
 } from "@prisma/client"
+import type { StatementParseResult } from "@/lib/statement-parser"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
@@ -1087,19 +1090,22 @@ export async function createTransfer(formData: FormData): Promise<BankAccountSta
         data: { currentBalance: newToBalance },
       })
 
-      // Create balance snapshots
+      // Create balance snapshots. These capture the *current* balance after the transfer,
+      // so they must be timestamped now — using a back-dated transferDate would insert
+      // out-of-order snapshots and corrupt balance-trend / highest-lowest analytics.
+      const snapshotDate = new Date()
       await tx.balanceSnapshot.createMany({
         data: [
           {
             bankAccountId: fromAccountId,
             balance: newFromBalance,
-            snapshotDate: transferDate,
+            snapshotDate,
             source: "TRANSACTION",
           },
           {
             bankAccountId: toAccountId,
             balance: newToBalance,
-            snapshotDate: transferDate,
+            snapshotDate,
             source: "TRANSACTION",
           },
         ],
@@ -1169,15 +1175,24 @@ export async function parseStatementFile(
   try {
     const ext = fileName.split(".").pop()?.toLowerCase()
 
-    if (ext === "pdf") {
-      // Import parsePDF dynamically to ensure it runs on server
-      const { parsePDF } = await import("@/lib/statement-parser")
-      const buffer = Buffer.from(fileBuffer)
-      const result = await parsePDF(buffer)
-      return result
-    } else {
+    if (ext !== "pdf") {
       return { error: "Please use CSV/Excel parsing on the client side" }
     }
+
+    // Import parsePDF dynamically to ensure it runs on server
+    const { parsePDF } = await import("@/lib/statement-parser")
+    const buffer = Buffer.from(fileBuffer)
+    const result = await parsePDF(buffer)
+
+    // Deterministic regex parsing failed — fall back to AI extraction of the raw text.
+    if (result.error === "PDF_NEEDS_AI_PROCESSING" && result.rawText) {
+      const aiResult = await extractTransactionsWithAI(result.rawText)
+      if (aiResult) return aiResult
+      // No AI key configured (or AI failed): keep the original signal for the UI.
+      return { success: false, transactions: [], error: "PDF_NEEDS_AI_PROCESSING" }
+    }
+
+    return result
   } catch (error) {
     console.error("Parse statement error:", error)
     return {
@@ -1185,5 +1200,218 @@ export async function parseStatementFile(
       transactions: [],
       error: error instanceof Error ? error.message : "Failed to parse file",
     }
+  }
+}
+
+/**
+ * AI fallback for PDFs whose layout defeats regex parsing. Uses Gemini if a key is
+ * configured. Returns null when no key is available so the caller can degrade gracefully.
+ */
+async function extractTransactionsWithAI(
+  text: string
+): Promise<StatementParseResult | null> {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY
+  if (!apiKey) return null
+
+  try {
+    const { GoogleGenerativeAI } = await import("@google/generative-ai")
+    const { generateExtractionPrompt, parseAIResponse } = await import(
+      "@/lib/statement-parser"
+    )
+    const genAI = new GoogleGenerativeAI(apiKey)
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+
+    const prompt = generateExtractionPrompt(text)
+    const response = await model.generateContent(prompt)
+    const transactions = parseAIResponse(response.response.text())
+
+    if (transactions.length === 0) {
+      return { success: false, transactions: [], error: "No transactions found in the PDF" }
+    }
+
+    transactions.sort((a, b) => a.date.getTime() - b.date.getTime())
+    return {
+      success: true,
+      transactions,
+      startDate: transactions[0]?.date,
+      endDate: transactions[transactions.length - 1]?.date,
+    }
+  } catch (error) {
+    console.error("AI statement extraction error:", error)
+    return { success: false, transactions: [], error: "AI extraction failed. Try a CSV/Excel export." }
+  }
+}
+
+// ============================================================================
+// Statement Import → Expense / Income
+// ============================================================================
+
+export type ImportTransactionInput = {
+  date: string | Date
+  description: string
+  amount: number
+  type: "CREDIT" | "DEBIT"
+  category?: string
+}
+
+export type ImportStatementResult = {
+  success?: string
+  error?: string
+  imported?: number
+  skipped?: number
+}
+
+function mapIncomeType(category?: string): IncomeType {
+  switch ((category || "").toLowerCase()) {
+    case "salary":
+      return "SALARY"
+    case "freelance":
+      return "FREELANCE"
+    case "interest":
+      return "INTEREST"
+    case "rental":
+      return "RENTAL"
+    default:
+      return "OTHER"
+  }
+}
+
+/**
+ * Persist selected statement transactions as Income (CREDIT) / Expense (DEBIT) rows,
+ * scoped to the given bank account. Skips rows that duplicate existing entries
+ * (same account, ~same date, amount, and description). Historical import: the
+ * account's running balance is intentionally NOT mutated to avoid double-counting.
+ */
+export async function importStatementTransactions(
+  accountId: string,
+  transactions: ImportTransactionInput[]
+): Promise<ImportStatementResult> {
+  const session = await auth()
+  if (!session?.user?.id) return { error: "Unauthorized" }
+  const userId = session.user.id
+
+  if (!accountId) return { error: "Missing account" }
+  if (!transactions?.length) return { error: "No transactions selected" }
+
+  // Verify ownership of the target account
+  const account = await prisma.bankAccount.findUnique({
+    where: { id: accountId, userId },
+    select: { id: true },
+  })
+  if (!account) return { error: "Account not found" }
+
+  // Normalize dates
+  const normalized = transactions
+    .map((t) => ({
+      date: new Date(t.date),
+      description: (t.description || "").trim() || "Imported transaction",
+      amount: Math.abs(Number(t.amount)),
+      type: t.type,
+      category: t.category,
+    }))
+    .filter((t) => !isNaN(t.date.getTime()) && t.amount > 0)
+
+  if (normalized.length === 0) return { error: "No valid transactions to import" }
+
+  // Duplicate detection against existing rows for this account in the date span
+  const dates = normalized.map((t) => t.date.getTime())
+  const minDate = new Date(Math.min(...dates))
+  const maxDate = new Date(Math.max(...dates))
+  // Pad the window by 2 days to match the fuzzy duplicate detector
+  minDate.setDate(minDate.getDate() - 2)
+  maxDate.setDate(maxDate.getDate() + 2)
+
+  const [existingExpenses, existingIncomes] = await Promise.all([
+    prisma.expense.findMany({
+      where: { userId, bankAccountId: accountId, expenseDate: { gte: minDate, lte: maxDate } },
+      select: { id: true, expenseDate: true, amount: true, description: true },
+    }),
+    prisma.income.findMany({
+      where: { userId, bankAccountId: accountId, incomeDate: { gte: minDate, lte: maxDate } },
+      select: { id: true, incomeDate: true, amount: true, source: true },
+    }),
+  ])
+
+  const { detectDuplicates } = await import("@/lib/statement-parser")
+  const existing = [
+    ...existingExpenses.map((e) => ({
+      id: e.id,
+      date: e.expenseDate,
+      amount: Number(e.amount),
+      description: e.description,
+      type: "expense" as const,
+    })),
+    ...existingIncomes.map((i) => ({
+      id: i.id,
+      date: i.incomeDate,
+      amount: Number(i.amount),
+      description: i.source,
+      type: "income" as const,
+    })),
+  ]
+
+  const dupMatches = detectDuplicates(normalized, existing)
+  const dupKeys = new Set(
+    dupMatches.map((d) => `${d.transaction.date.getTime()}|${d.transaction.amount}|${d.transaction.description}`)
+  )
+
+  const toImport = normalized.filter(
+    (t) => !dupKeys.has(`${t.date.getTime()}|${t.amount}|${t.description}`)
+  )
+  const skipped = normalized.length - toImport.length
+
+  if (toImport.length === 0) {
+    return { success: "All selected transactions already exist", imported: 0, skipped }
+  }
+
+  const expenseRows = toImport
+    .filter((t) => t.type === "DEBIT")
+    .map((t) => ({
+      userId,
+      amount: t.amount,
+      expenseDate: t.date,
+      category: t.category || "Other",
+      description: t.description,
+      paymentMethod: "BANK_TRANSFER" as PaymentMethod,
+      bankAccountId: accountId,
+    }))
+
+  const incomeRows = toImport
+    .filter((t) => t.type === "CREDIT")
+    .map((t) => ({
+      userId,
+      source: t.description,
+      amount: t.amount,
+      incomeDate: t.date,
+      type: mapIncomeType(t.category),
+      category: t.category || "Other",
+      bankAccountId: accountId,
+    }))
+
+  try {
+    await prisma.$transaction([
+      ...(expenseRows.length ? [prisma.expense.createMany({ data: expenseRows })] : []),
+      ...(incomeRows.length ? [prisma.income.createMany({ data: incomeRows })] : []),
+    ])
+
+    revalidatePath("/dashboard/expenses")
+    revalidatePath("/dashboard/income")
+    revalidatePath("/dashboard/accounts")
+    revalidatePath(`/dashboard/accounts/${accountId}`)
+    revalidatePath("/dashboard")
+
+    const parts: string[] = []
+    if (expenseRows.length) parts.push(`${expenseRows.length} expense${expenseRows.length > 1 ? "s" : ""}`)
+    if (incomeRows.length) parts.push(`${incomeRows.length} income${incomeRows.length > 1 ? " entry" : ""}`)
+    const summary = parts.join(" and ") || `${toImport.length} transactions`
+
+    return {
+      success: `Imported ${summary}${skipped ? ` · skipped ${skipped} duplicate${skipped > 1 ? "s" : ""}` : ""}`,
+      imported: toImport.length,
+      skipped,
+    }
+  } catch (error) {
+    console.error("Import statement transactions error:", error)
+    return { error: "Failed to import transactions" }
   }
 }

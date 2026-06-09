@@ -23,6 +23,8 @@ export type StatementParseResult = {
   openingBalance?: number
   closingBalance?: number
   error?: string
+  /** Raw extracted text, surfaced when regex parsing fails so an AI fallback can use it. */
+  rawText?: string
 }
 
 export type BankFormat = {
@@ -237,6 +239,7 @@ export async function parsePDF(buffer: Buffer): Promise<StatementParseResult> {
         success: false,
         transactions: [],
         error: "PDF_NEEDS_AI_PROCESSING",
+        rawText: text,
       }
     }
 

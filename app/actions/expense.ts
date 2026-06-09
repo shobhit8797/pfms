@@ -75,6 +75,22 @@ export async function createExpense(prevState: ExpenseState | undefined, formDat
     return { error: "Credit card is required for credit card payment" }
   }
 
+  // Verify ownership of any linked account/card (prevents cross-tenant balance writes)
+  if (data.bankAccountId) {
+    const owned = await prisma.bankAccount.findUnique({
+      where: { id: data.bankAccountId, userId },
+      select: { id: true },
+    })
+    if (!owned) return { error: "Bank account not found" }
+  }
+  if (data.creditCardId) {
+    const owned = await prisma.creditCard.findUnique({
+      where: { id: data.creditCardId, userId },
+      select: { id: true },
+    })
+    if (!owned) return { error: "Credit card not found" }
+  }
+
   try {
     await prisma.$transaction(async (tx) => {
       // Create expense
@@ -85,10 +101,10 @@ export async function createExpense(prevState: ExpenseState | undefined, formDat
         },
       })
 
-      // Update balances if applicable
+      // Update balances if applicable (scoped by userId)
       if (data.paymentMethod === "BANK_TRANSFER" && data.bankAccountId) {
-        await tx.bankAccount.update({
-          where: { id: data.bankAccountId },
+        await tx.bankAccount.updateMany({
+          where: { id: data.bankAccountId, userId },
           data: {
             currentBalance: {
               decrement: data.amount,
@@ -96,10 +112,10 @@ export async function createExpense(prevState: ExpenseState | undefined, formDat
           },
         })
       }
-      
+
       if (data.paymentMethod === "CREDIT_CARD" && data.creditCardId) {
-         await tx.creditCard.update({
-          where: { id: data.creditCardId },
+         await tx.creditCard.updateMany({
+          where: { id: data.creditCardId, userId },
           data: {
             currentOutstanding: {
               increment: data.amount,
@@ -158,10 +174,10 @@ export async function deleteExpense(expenseId: string) {
 
             if (!expense) throw new Error("Expense not found")
 
-            // Revert balances
+            // Revert balances (scoped by userId)
              if (expense.paymentMethod === "BANK_TRANSFER" && expense.bankAccountId) {
-                await tx.bankAccount.update({
-                  where: { id: expense.bankAccountId },
+                await tx.bankAccount.updateMany({
+                  where: { id: expense.bankAccountId, userId },
                   data: {
                     currentBalance: {
                       increment: expense.amount,
@@ -169,10 +185,10 @@ export async function deleteExpense(expenseId: string) {
                   },
                 })
               }
-              
+
               if (expense.paymentMethod === "CREDIT_CARD" && expense.creditCardId) {
-                 await tx.creditCard.update({
-                  where: { id: expense.creditCardId },
+                 await tx.creditCard.updateMany({
+                  where: { id: expense.creditCardId, userId },
                   data: {
                     currentOutstanding: {
                       decrement: expense.amount,

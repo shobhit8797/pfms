@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/select"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { parseCSV, parseExcel, ParsedTransaction } from "@/lib/statement-parser"
-import { parseStatementFile } from "@/app/actions/bank-account"
+import { parseStatementFile, importStatementTransactions } from "@/app/actions/bank-account"
 import { toast } from "sonner"
 import {
   Upload,
@@ -84,7 +84,7 @@ const INCOME_CATEGORIES = [
 ]
 
 export function StatementUploadDialog({
-  accountId: _accountId,
+  accountId,
   open,
   onOpenChange,
 }: StatementUploadDialogProps) {
@@ -95,6 +95,9 @@ export function StatementUploadDialog({
   const [transactions, setTransactions] = useState<ParsedTransaction[]>([])
   const [selectedTransactions, setSelectedTransactions] = useState<Set<number>>(new Set())
   const [error, setError] = useState<string | null>(null)
+  const [importSummary, setImportSummary] = useState<{ imported: number; skipped: number } | null>(
+    null
+  )
   const [isPending, startTransition] = useTransition()
 
   const resetState = () => {
@@ -105,6 +108,7 @@ export function StatementUploadDialog({
     setTransactions([])
     setSelectedTransactions(new Set())
     setError(null)
+    setImportSummary(null)
   }
 
   const handleOpenChange = (open: boolean) => {
@@ -168,7 +172,7 @@ export function StatementUploadDialog({
 
           if (result.error === "PDF_NEEDS_AI_PROCESSING") {
             setError(
-              "This PDF format requires AI processing. Please try a CSV or Excel file for now."
+              "Couldn't read this PDF's layout automatically, and AI extraction isn't configured (set GEMINI_API_KEY). Please upload a CSV or Excel export instead."
             )
             setStep("select")
             return
@@ -244,13 +248,25 @@ export function StatementUploadDialog({
 
   const handleImport = () => {
     startTransition(async () => {
-      const selectedTxns = transactions.filter((_, i) => selectedTransactions.has(i))
+      const selectedTxns = transactions
+        .filter((_, i) => selectedTransactions.has(i))
+        .map((t) => ({
+          date: t.date,
+          description: t.description,
+          amount: t.amount,
+          type: t.type,
+          category: t.category,
+        }))
 
-      // In a real implementation, this would call a server action to create
-      // Income/Expense records from the selected transactions
-      // For now, we'll just show success
+      const result = await importStatementTransactions(accountId, selectedTxns)
 
-      toast.success(`Imported ${selectedTxns.length} transactions successfully!`)
+      if (result.error) {
+        toast.error(result.error)
+        return
+      }
+
+      toast.success(result.success || "Transactions imported")
+      setImportSummary({ imported: result.imported ?? 0, skipped: result.skipped ?? 0 })
       setStep("complete")
     })
   }
@@ -509,7 +525,13 @@ export function StatementUploadDialog({
             <div>
               <p className="text-lg font-medium">Import Successful!</p>
               <p className="text-sm text-muted-foreground mt-2">
-                {selectedTransactions.size} transactions have been imported.
+                {importSummary
+                  ? `${importSummary.imported} transaction${importSummary.imported === 1 ? "" : "s"} added to your income & expenses${
+                      importSummary.skipped
+                        ? ` · ${importSummary.skipped} duplicate${importSummary.skipped === 1 ? "" : "s"} skipped`
+                        : ""
+                    }.`
+                  : `${selectedTransactions.size} transactions have been imported.`}
               </p>
             </div>
             <DialogFooter className="justify-center">

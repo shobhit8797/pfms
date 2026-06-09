@@ -104,6 +104,11 @@ export async function calculateTax() {
     where: { userId: session.user.id, isTaxDeductible: true }
   })
 
+  // Manually-recorded deductions (the "Add Deduction" dialog writes here)
+  const taxDeductions = await prisma.taxDeduction.findMany({
+    where: { userId: session.user.id, financialYear: getCurrentFinancialYear() },
+  })
+
   // Calculate Total Gross Income
   const grossIncome = incomes.reduce((acc, inc) => acc + Number(inc.amount), 0)
 
@@ -112,10 +117,11 @@ export async function calculateTax() {
   let deduction80D = 0
   let deductionNPS = 0
   
-  // Investments
+  // Investments — PPF/EPF qualify under 80C (ELSS/LIC users tag via notes "80C" or the
+  // Add-Deduction dialog, since AssetClass has no ELSS/LIC member); NPS under 80CCD(1B).
   investments.forEach(inv => {
       const amount = Number(inv.currentValue) || (Number(inv.purchasePrice) * Number(inv.quantity))
-      if (["PPF", "EPF", "ELSS", "LIC"].includes(inv.assetClass) || inv.notes?.includes("80C")) {
+      if (["PPF", "EPF"].includes(inv.assetClass) || inv.notes?.includes("80C")) {
           deduction80C += amount
       }
       if (inv.assetClass === "NPS") {
@@ -128,6 +134,20 @@ export async function calculateTax() {
       const amount = Number(exp.amount)
       if (exp.taxSection === "80C") deduction80C += amount
       if (exp.taxSection === "80D") deduction80D += amount
+  })
+
+  // Manually-recorded deductions, folded in by section
+  taxDeductions.forEach(d => {
+      const amount = Number(d.amount)
+      const section = (d.section || "").toUpperCase().replace(/\s/g, "")
+      if (section.includes("80CCD") || section.includes("NPS")) {
+          deductionNPS += amount
+      } else if (section.startsWith("80D")) {
+          deduction80D += amount
+      } else if (section.startsWith("80C")) {
+          deduction80C += amount
+      }
+      // Other sections (80E, 80G, etc.) are recorded but not yet modeled in the slab math.
   })
 
   // Caps

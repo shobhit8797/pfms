@@ -30,9 +30,6 @@ export async function createIncome(prevState: IncomeState | undefined, formData:
     return { error: "Unauthorized" }
   }
 
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/330bc31a-43db-4108-82f1-804b7395875f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'income.ts:33',message:'Raw formData extraction',data:{notesRaw:formData.get("notes"),notesType:typeof formData.get("notes"),notesIsNull:formData.get("notes")===null,hasNotesKey:formData.has("notes")},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
   const rawData = {
     source: formData.get("source"),
     amount: formData.get("amount"),
@@ -45,19 +42,10 @@ export async function createIncome(prevState: IncomeState | undefined, formData:
     category: formData.get("category"),
     notes: formData.get("notes"),
   }
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/330bc31a-43db-4108-82f1-804b7395875f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'income.ts:44',message:'rawData before validation',data:{notes:rawData.notes,notesType:typeof rawData.notes,notesIsNull:rawData.notes===null,notesIsUndefined:rawData.notes===undefined},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
 
   const validated = incomeSchema.safeParse(rawData)
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/330bc31a-43db-4108-82f1-804b7395875f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'income.ts:46',message:'Validation result',data:{success:validated.success,errors:validated.success?null:validated.error.flatten()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
 
   if (!validated.success) {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/330bc31a-43db-4108-82f1-804b7395875f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'income.ts:48',message:'Validation failed - returning error',data:{flattenedErrors:validated.error.flatten()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     console.log(validated.error.flatten())
     return { error: "Invalid input data" }
   }
@@ -69,34 +57,43 @@ export async function createIncome(prevState: IncomeState | undefined, formData:
     return { error: "Frequency is required for recurring income" }
   }
 
-  try {
-    const income = await prisma.income.create({
-      data: {
-        userId: session.user.id,
-        source: data.source,
-        amount: data.amount,
-        incomeDate: data.incomeDate,
-        type: data.type,
-        isRecurring: data.isRecurring || false,
-        frequency: data.isRecurring ? data.frequency : null,
-        isTaxable: data.isTaxable || false,
-        bankAccountId: data.bankAccountId,
-        category: data.category,
-        notes: data.notes,
-      },
-    })
+  const userId = session.user.id
 
-    // Update bank balance if linked
-    if (data.bankAccountId) {
-      await prisma.bankAccount.update({
-        where: { id: data.bankAccountId },
+  // Verify the linked bank account belongs to this user (prevents cross-tenant balance writes)
+  if (data.bankAccountId) {
+    const owned = await prisma.bankAccount.findUnique({
+      where: { id: data.bankAccountId, userId },
+      select: { id: true },
+    })
+    if (!owned) return { error: "Bank account not found" }
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.income.create({
         data: {
-          currentBalance: {
-            increment: data.amount
-          }
-        }
+          userId,
+          source: data.source,
+          amount: data.amount,
+          incomeDate: data.incomeDate,
+          type: data.type,
+          isRecurring: data.isRecurring || false,
+          frequency: data.isRecurring ? data.frequency : null,
+          isTaxable: data.isTaxable || false,
+          bankAccountId: data.bankAccountId,
+          category: data.category,
+          notes: data.notes,
+        },
       })
-    }
+
+      // Update bank balance if linked (scoped by userId)
+      if (data.bankAccountId) {
+        await tx.bankAccount.updateMany({
+          where: { id: data.bankAccountId, userId },
+          data: { currentBalance: { increment: data.amount } },
+        })
+      }
+    })
 
     revalidatePath("/dashboard/income")
     revalidatePath("/dashboard") // For net worth update
@@ -123,6 +120,124 @@ export async function getIncomes() {
     },
     orderBy: { incomeDate: "desc" },
   })
+}
+
+export async function deleteIncome(incomeId: string): Promise<IncomeState> {
+  const session = await auth()
+  if (!session?.user?.id) return { error: "Unauthorized" }
+  const userId = session.user.id
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const income = await tx.income.findUnique({ where: { id: incomeId, userId } })
+      if (!income) throw new Error("Income not found")
+
+      // Revert the bank balance increment applied at creation
+      if (income.bankAccountId) {
+        await tx.bankAccount.updateMany({
+          where: { id: income.bankAccountId, userId },
+          data: { currentBalance: { decrement: income.amount } },
+        })
+      }
+
+      await tx.income.delete({ where: { id: incomeId } })
+    })
+
+    revalidatePath("/dashboard/income")
+    revalidatePath("/dashboard/accounts")
+    revalidatePath("/dashboard")
+    return { success: "Income deleted" }
+  } catch (error) {
+    console.error("Delete income error:", error)
+    return { error: "Failed to delete income" }
+  }
+}
+
+export async function updateIncome(
+  incomeId: string,
+  formData: FormData
+): Promise<IncomeState> {
+  const session = await auth()
+  if (!session?.user?.id) return { error: "Unauthorized" }
+  const userId = session.user.id
+
+  const rawData = {
+    source: formData.get("source"),
+    amount: formData.get("amount"),
+    incomeDate: new Date(formData.get("incomeDate") as string),
+    type: formData.get("type"),
+    isRecurring: formData.get("isRecurring") === "on",
+    frequency: formData.get("frequency") || undefined,
+    isTaxable: formData.get("isTaxable") === "on",
+    bankAccountId: formData.get("bankAccountId") || undefined,
+    category: formData.get("category"),
+    notes: formData.get("notes") || undefined,
+  }
+
+  const validated = incomeSchema.safeParse(rawData)
+  if (!validated.success) {
+    return { error: validated.error.issues[0]?.message || "Invalid input data" }
+  }
+  const data = validated.data
+
+  if (data.isRecurring && !data.frequency) {
+    return { error: "Frequency is required for recurring income" }
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const existing = await tx.income.findUnique({ where: { id: incomeId, userId } })
+      if (!existing) throw new Error("Income not found")
+
+      // Verify new linked account ownership (if any)
+      if (data.bankAccountId) {
+        const owned = await tx.bankAccount.findUnique({
+          where: { id: data.bankAccountId, userId },
+          select: { id: true },
+        })
+        if (!owned) throw new Error("Bank account not found")
+      }
+
+      // Revert old balance effect, then apply new (handles amount and account changes)
+      if (existing.bankAccountId) {
+        await tx.bankAccount.updateMany({
+          where: { id: existing.bankAccountId, userId },
+          data: { currentBalance: { decrement: existing.amount } },
+        })
+      }
+      if (data.bankAccountId) {
+        await tx.bankAccount.updateMany({
+          where: { id: data.bankAccountId, userId },
+          data: { currentBalance: { increment: data.amount } },
+        })
+      }
+
+      await tx.income.update({
+        where: { id: incomeId },
+        data: {
+          source: data.source,
+          amount: data.amount,
+          incomeDate: data.incomeDate,
+          type: data.type,
+          isRecurring: data.isRecurring || false,
+          frequency: data.isRecurring ? data.frequency : null,
+          isTaxable: data.isTaxable || false,
+          bankAccountId: data.bankAccountId ?? null,
+          category: data.category,
+          notes: data.notes,
+        },
+      })
+    })
+
+    revalidatePath("/dashboard/income")
+    revalidatePath("/dashboard/accounts")
+    revalidatePath("/dashboard")
+    return { success: "Income updated successfully" }
+  } catch (error) {
+    console.error("Update income error:", error)
+    const msg = error instanceof Error ? error.message : "Failed to update income"
+    return { error: msg === "Income not found" || msg === "Bank account not found" ? msg : "Failed to update income" }
+  }
 }
 
 

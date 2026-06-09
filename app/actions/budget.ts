@@ -14,6 +14,9 @@ const budgetSchema = z.object({
   endDate: z.string().transform((str) => new Date(str)),
   alertThreshold: z.coerce.number().min(1).max(100).optional(),
   carryForward: z.boolean().optional(),
+}).refine((d) => d.endDate > d.startDate, {
+  message: "End date must be after start date",
+  path: ["endDate"],
 })
 
 export type BudgetState = {
@@ -40,7 +43,7 @@ export async function createBudget(prevState: BudgetState | undefined, formData:
   const validated = budgetSchema.safeParse(rawData)
 
   if (!validated.success) {
-    return { error: "Invalid input data" }
+    return { error: validated.error.issues[0]?.message || "Invalid input data" }
   }
 
   const data = validated.data

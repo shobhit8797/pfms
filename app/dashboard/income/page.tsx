@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { format } from "date-fns"
 import { Wallet, ArrowUpRight, TrendingUp } from "lucide-react"
 import { serializeDecimals } from "@/lib/utils"
+import { DeleteEntryButton } from "@/components/shared/delete-entry-button"
 
 export default async function IncomePage() {
   const [incomesRaw, accountsRaw] = await Promise.all([
@@ -142,6 +143,7 @@ export default async function IncomePage() {
                   <TableHead className="text-muted-foreground">Type</TableHead>
                   <TableHead className="text-muted-foreground">Account</TableHead>
                   <TableHead className="text-right text-muted-foreground">Amount</TableHead>
+                  <TableHead className="w-12"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -180,6 +182,14 @@ export default async function IncomePage() {
                       <span className="font-mono font-semibold text-success">
                         +₹{Number(income.amount).toLocaleString('en-IN')}
                       </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <DeleteEntryButton
+                        id={income.id}
+                        kind="income"
+                        label={income.source}
+                        amount={`₹${Number(income.amount).toLocaleString('en-IN')}`}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}

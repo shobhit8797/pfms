@@ -92,9 +92,6 @@ export function AddIncomeDialog({ accounts }: AddIncomeDialogProps) {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     startTransition(async () => {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/330bc31a-43db-4108-82f1-804b7395875f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'add-income-dialog.tsx:93',message:'onSubmit called',data:{notes:values.notes,notesType:typeof values.notes,notesTruthy:!!values.notes},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       const formData = new FormData()
       formData.append("source", values.source)
       formData.append("amount", values.amount.toString())
@@ -105,18 +102,9 @@ export function AddIncomeDialog({ accounts }: AddIncomeDialogProps) {
       if (values.isTaxable) formData.append("isTaxable", "on")
       if (values.bankAccountId) formData.append("bankAccountId", values.bankAccountId)
       formData.append("category", values.category)
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/330bc31a-43db-4108-82f1-804b7395875f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'add-income-dialog.tsx:105',message:'Before notes append check',data:{notesValue:values.notes,willAppend:!!values.notes},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       if (values.notes) formData.append("notes", values.notes)
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/330bc31a-43db-4108-82f1-804b7395875f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'add-income-dialog.tsx:106',message:'After notes append',data:{hasNotesInFormData:formData.has('notes'),notesFromFormData:formData.get('notes')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
 
       const result = await createIncome(undefined, formData)
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/330bc31a-43db-4108-82f1-804b7395875f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'add-income-dialog.tsx:108',message:'createIncome result',data:{success:result.success,error:result.error},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
 
       if (result.success) {
         toast.success(result.success)

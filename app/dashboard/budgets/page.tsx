@@ -77,7 +77,7 @@ export default async function BudgetsPage() {
                 ₹{totalSpent.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                {((totalSpent / totalBudget) * 100).toFixed(0)}% utilized
+                {totalBudget > 0 ? ((totalSpent / totalBudget) * 100).toFixed(0) : 0}% utilized
               </p>
             </CardContent>
           </Card>
