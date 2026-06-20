@@ -2,9 +2,11 @@ import { useState } from "react"
 import { ActivityIndicator, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native"
 import { ApiError, upiHandleCreateSchema } from "@pfms/shared"
 import { useCreateUpiHandle } from "../lib/hooks"
+import { useThemeColors } from "../lib/theme"
 
 export function AddUpiModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const create = useCreateUpiHandle()
+  const c = useThemeColors()
 
   const [name, setName] = useState("")
   const [handle, setHandle] = useState("")
@@ -30,11 +32,11 @@ export function AddUpiModal({ visible, onClose }: { visible: boolean; onClose: (
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <ScrollView className="flex-1 bg-white px-6 pt-6" keyboardShouldPersistTaps="handled">
-        <Text className="mb-5 text-2xl font-bold text-gray-900">Add UPI</Text>
+      <ScrollView className="flex-1 bg-background px-6 pt-6" keyboardShouldPersistTaps="handled">
+        <Text className="mb-5 text-2xl font-bold text-foreground">Add UPI</Text>
 
-        <View className="mb-5 rounded-xl border border-indigo-100 bg-indigo-50 p-4">
-          <Text className="text-sm text-indigo-700">
+        <View className="mb-5 rounded-xl border border-primary/30 bg-secondary p-4">
+          <Text className="text-sm text-secondary-foreground">
             Save your UPI handles (e.g. GPay, PhonePe) here for quick reference when logging expenses.
           </Text>
         </View>
@@ -42,6 +44,7 @@ export function AddUpiModal({ visible, onClose }: { visible: boolean; onClose: (
         <Field label="Display name">
           <TextInput
             className={inputCls}
+            placeholderTextColor={c.mutedForeground}
             placeholder="e.g. GPay, PhonePe"
             value={name}
             onChangeText={setName}
@@ -50,6 +53,7 @@ export function AddUpiModal({ visible, onClose }: { visible: boolean; onClose: (
         <Field label="UPI handle (VPA)">
           <TextInput
             className={inputCls}
+            placeholderTextColor={c.mutedForeground}
             placeholder="e.g. user@ybl"
             autoCapitalize="none"
             autoCorrect={false}
@@ -59,23 +63,23 @@ export function AddUpiModal({ visible, onClose }: { visible: boolean; onClose: (
           />
         </Field>
 
-        {error ? <Text className="mt-2 text-sm text-red-600">{error}</Text> : null}
+        {error ? <Text className="mt-2 text-sm text-destructive">{error}</Text> : null}
 
         <View className="mb-10 mt-6 flex-row gap-3">
           <TouchableOpacity
-            className="flex-1 items-center rounded-lg border border-gray-300 py-4"
+            className="flex-1 items-center rounded-lg border border-border py-4"
             onPress={() => { reset(); onClose() }}
           >
-            <Text className="font-semibold text-gray-700">Cancel</Text>
+            <Text className="font-semibold text-foreground">Cancel</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            className="flex-1 items-center rounded-lg bg-brand py-4"
+            className="flex-1 items-center rounded-lg bg-primary py-4"
             disabled={create.isPending}
             onPress={onSubmit}
           >
             {create.isPending
-              ? <ActivityIndicator color="white" />
-              : <Text className="font-semibold text-white">Save UPI</Text>
+              ? <ActivityIndicator color={c.primaryForeground} />
+              : <Text className="font-semibold text-primary-foreground">Save UPI</Text>
             }
           </TouchableOpacity>
         </View>
@@ -84,8 +88,8 @@ export function AddUpiModal({ visible, onClose }: { visible: boolean; onClose: (
   )
 }
 
-const inputCls = "rounded-lg border border-gray-300 px-4 py-3 text-base text-gray-900"
-const labelCls = "mb-1 mt-3 text-sm font-medium text-gray-700"
+const inputCls = "rounded-lg border border-input bg-card px-4 py-3 text-base text-foreground"
+const labelCls = "mb-1 mt-3 text-sm font-medium text-foreground"
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

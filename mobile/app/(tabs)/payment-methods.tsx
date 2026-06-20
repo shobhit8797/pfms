@@ -3,12 +3,14 @@ import { ActivityIndicator, Alert, RefreshControl, ScrollView, Text, TouchableOp
 import { Ionicons } from "@expo/vector-icons"
 import type { CardDTO, UpiHandleDTO } from "@pfms/shared"
 import { useCards, useDeleteCard, useUpiHandles, useDeleteUpiHandle } from "../../lib/hooks"
+import { useThemeColors } from "../../lib/theme"
 import { AddCardModal } from "../../components/AddCardModal"
 import { AddUpiModal } from "../../components/AddUpiModal"
 
 export default function PaymentMethodsScreen() {
   const cards = useCards()
   const upiHandles = useUpiHandles()
+  const c = useThemeColors()
   const deleteCard = useDeleteCard()
   const deleteUpi = useDeleteUpiHandle()
 
@@ -35,13 +37,13 @@ export default function PaymentMethodsScreen() {
     upiHandles.refetch()
   }
 
-  if (isLoading) return <ActivityIndicator className="mt-10" color="#4f46e5" />
+  if (isLoading) return <ActivityIndicator className="mt-10" color={c.primary} />
 
   return (
     <ScrollView
-      className="flex-1 bg-gray-50"
+      className="flex-1 bg-background"
       contentContainerClassName="p-4"
-      refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
+      refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={c.mutedForeground} />}
     >
       {/* Cards section */}
       <SectionHeader title="Credit cards" onAdd={() => setShowAddCard(true)} />
@@ -72,15 +74,16 @@ export default function PaymentMethodsScreen() {
 }
 
 function SectionHeader({ title, onAdd }: { title: string; onAdd: () => void }) {
+  const c = useThemeColors()
   return (
     <View className="mb-2 mt-5 flex-row items-center justify-between">
-      <Text className="text-base font-semibold text-gray-700">{title}</Text>
+      <Text className="text-base font-semibold text-foreground">{title}</Text>
       <TouchableOpacity
         onPress={onAdd}
-        className="flex-row items-center gap-1 rounded-full border border-brand px-3 py-1"
+        className="flex-row items-center gap-1 rounded-full border border-primary px-3 py-1"
       >
-        <Ionicons name="add" size={16} color="#4f46e5" />
-        <Text className="text-sm font-medium text-brand">Add</Text>
+        <Ionicons name="add" size={16} color={c.primary} />
+        <Text className="text-sm font-medium text-primary">Add</Text>
       </TouchableOpacity>
     </View>
   )
@@ -88,8 +91,8 @@ function SectionHeader({ title, onAdd }: { title: string; onAdd: () => void }) {
 
 function EmptyState({ message }: { message: string }) {
   return (
-    <View className="mb-2 items-center rounded-xl bg-white px-4 py-6">
-      <Text className="text-sm text-gray-400">{message}</Text>
+    <View className="mb-2 items-center rounded-xl border border-border bg-card px-4 py-6">
+      <Text className="text-sm text-muted-foreground">{message}</Text>
     </View>
   )
 }
@@ -104,23 +107,23 @@ function CardRow({ card, onDelete }: { card: CardDTO; onDelete: () => void }) {
   return (
     <TouchableOpacity
       onLongPress={onDelete}
-      className="mb-2 rounded-xl bg-white p-4"
+      className="mb-2 rounded-xl border border-border bg-card p-4"
     >
       <View className="flex-row items-start justify-between">
         <View className="flex-1">
-          <Text className="text-base font-semibold text-gray-900">{card.cardName}</Text>
-          <Text className="mt-0.5 text-sm text-gray-500">{card.bankName} · ····{card.lastFourDigits}</Text>
+          <Text className="text-base font-semibold text-foreground">{card.cardName}</Text>
+          <Text className="mt-0.5 text-sm text-muted-foreground">{card.bankName} · ····{card.lastFourDigits}</Text>
         </View>
         <View className="items-end">
-          <Text className="text-xs text-gray-400">Available</Text>
-          <Text className="text-sm font-semibold text-green-600">{available}</Text>
+          <Text className="text-xs text-muted-foreground">Available</Text>
+          <Text className="text-sm font-semibold text-success">{available}</Text>
         </View>
       </View>
       <View className="mt-2 flex-row gap-4">
         <InfoChip label={`Billing: ${card.billingDate}`} />
         <InfoChip label={`Due: ${card.dueDate}`} />
       </View>
-      <Text className="mt-2 text-xs text-gray-400">Long-press to remove</Text>
+      <Text className="mt-2 text-xs text-muted-foreground">Long-press to remove</Text>
     </TouchableOpacity>
   )
 }
@@ -129,28 +132,28 @@ function UpiRow({ upi, onDelete }: { upi: UpiHandleDTO; onDelete: () => void }) 
   return (
     <TouchableOpacity
       onLongPress={onDelete}
-      className="mb-2 flex-row items-center justify-between rounded-xl bg-white p-4"
+      className="mb-2 flex-row items-center justify-between rounded-xl border border-border bg-card p-4"
     >
       <View className="flex-1">
         <View className="flex-row items-center gap-2">
-          <Text className="text-base font-semibold text-gray-900">{upi.name}</Text>
+          <Text className="text-base font-semibold text-foreground">{upi.name}</Text>
           {upi.isDefault && (
-            <View className="rounded-full bg-indigo-100 px-2 py-0.5">
-              <Text className="text-xs font-medium text-indigo-700">Default</Text>
+            <View className="rounded-full bg-secondary px-2 py-0.5">
+              <Text className="text-xs font-medium text-primary">Default</Text>
             </View>
           )}
         </View>
-        <Text className="mt-0.5 text-sm text-gray-500">{upi.handle}</Text>
+        <Text className="mt-0.5 text-sm text-muted-foreground">{upi.handle}</Text>
       </View>
-      <Text className="text-xs text-gray-400">Hold to remove</Text>
+      <Text className="text-xs text-muted-foreground">Hold to remove</Text>
     </TouchableOpacity>
   )
 }
 
 function InfoChip({ label }: { label: string }) {
   return (
-    <View className="rounded-full bg-gray-100 px-3 py-1">
-      <Text className="text-xs text-gray-600">{label}</Text>
+    <View className="rounded-full bg-muted px-3 py-1">
+      <Text className="text-xs text-muted-foreground">{label}</Text>
     </View>
   )
 }

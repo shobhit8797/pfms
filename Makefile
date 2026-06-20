@@ -7,9 +7,13 @@ LAN_IP ?= $(shell ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2
 PORT   ?= 3000
 API_URL = http://$(LAN_IP):$(PORT)
 
+# Deployed backend (Vercel). Used by `make mobile-prod` so the phone talks to the
+# live API instead of this machine. Override with: make mobile-prod PROD_API_URL=https://...
+PROD_API_URL ?= https://pfms-chi.vercel.app
+
 .DEFAULT_GOAL := help
 .PHONY: help setup install mobile-install dev start build lint typecheck \
-        mobile mobile-clear mobile-ios mobile-android mobile-web dev-all \
+        mobile mobile-prod mobile-clear mobile-ios mobile-android mobile-web dev-all \
         db-generate db-migrate db-push db-studio db-deploy db-reset clean
 
 ## ----------------------------------------------------------------------------
@@ -51,6 +55,10 @@ typecheck: ## Type-check web + @pfms/shared (no emit)
 mobile: ## Start Expo (QR for Expo Go) pointed at this machine's LAN backend
 	@echo "→ API base URL: $(API_URL)  (make sure 'make dev' is running)"
 	cd mobile && EXPO_PUBLIC_API_BASE_URL=$(API_URL) bunx expo start
+
+mobile-prod: ## Start Expo (QR for Expo Go) pointed at the DEPLOYED Vercel backend
+	@echo "→ API base URL: $(PROD_API_URL)  (deployed — no local backend needed)"
+	cd mobile && EXPO_PUBLIC_API_BASE_URL=$(PROD_API_URL) bunx expo start --clear
 
 mobile-clear: ## Start Expo with a cleared Metro cache (use after dependency/SDK changes)
 	@echo "→ API base URL: $(API_URL)"

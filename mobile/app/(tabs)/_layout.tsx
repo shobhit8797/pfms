@@ -2,10 +2,12 @@ import { Ionicons } from "@expo/vector-icons"
 import { Redirect, Tabs } from "expo-router"
 import { useAuth } from "../../lib/auth"
 import { usePendingMessages } from "../../lib/hooks"
+import { useThemeColors } from "../../lib/theme"
 
 export default function TabsLayout() {
   const { user, loading } = useAuth()
   const pending = usePendingMessages()
+  const c = useThemeColors()
   const pendingCount = pending.data?.items.length ?? 0
   if (loading) return null
   if (!user) return <Redirect href="/login" />
@@ -13,8 +15,11 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: "#4f46e5",
-        tabBarInactiveTintColor: "#9ca3af",
+        tabBarActiveTintColor: c.primary,
+        tabBarInactiveTintColor: c.mutedForeground,
+        tabBarStyle: { backgroundColor: c.card, borderTopColor: c.border },
+        headerStyle: { backgroundColor: c.card },
+        headerTintColor: c.foreground,
         headerShown: true,
       }}
     >

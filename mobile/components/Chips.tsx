@@ -21,10 +21,10 @@ export function Chips<T extends string>({
             key={o.value}
             onPress={() => onChange(o.value)}
             className={`mx-1 rounded-full border px-4 py-2 ${
-              active ? "border-brand bg-brand" : "border-gray-300 bg-white"
+              active ? "border-primary bg-primary" : "border-border bg-card"
             }`}
           >
-            <Text className={active ? "text-sm font-medium text-white" : "text-sm text-gray-700"}>{o.label}</Text>
+            <Text className={active ? "text-sm font-medium text-primary-foreground" : "text-sm text-foreground"}>{o.label}</Text>
           </TouchableOpacity>
         )
       })}

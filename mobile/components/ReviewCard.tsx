@@ -20,6 +20,7 @@ import {
 } from "@pfms/shared"
 import { useAccounts, useCards, useResolveMessage } from "../lib/hooks"
 import { useAuth } from "../lib/auth"
+import { useThemeColors } from "../lib/theme"
 import { formatDate, formatINR } from "../lib/format"
 import { captureReceiptPhoto, pickReceiptDocument, pickReceiptImage, type PickedReceipt } from "../lib/receipt"
 import { cacheReceiptLocally, uploadReceipt } from "../lib/receipt-store"
@@ -45,6 +46,7 @@ export function ReviewCard({
   const resolve = useResolveMessage()
   const accounts = useAccounts()
   const cards = useCards()
+  const theme = useThemeColors()
   const { getToken } = useAuth()
 
   const [category, setCategory] = useState(message.suggestedCategory ?? "")
@@ -179,57 +181,58 @@ export function ReviewCard({
     <Animated.View
       {...responder.panHandlers}
       style={{ transform: [{ translateX: pan.x }, { rotate }] }}
-      className="rounded-3xl border border-gray-200 bg-white p-5 shadow-lg"
+      className="rounded-3xl border border-border bg-card p-5 shadow-lg"
     >
       {/* Swipe hints */}
-      <Animated.View style={{ opacity: saveHintOpacity }} className="absolute left-4 top-4 z-10 rounded-lg border-2 border-green-500 px-2 py-0.5">
-        <Text className="text-xs font-bold text-green-600">SAVE</Text>
+      <Animated.View style={{ opacity: saveHintOpacity }} className="absolute left-4 top-4 z-10 rounded-lg border-2 border-success px-2 py-0.5">
+        <Text className="text-xs font-bold text-success">SAVE</Text>
       </Animated.View>
-      <Animated.View style={{ opacity: dismissHintOpacity }} className="absolute right-4 top-4 z-10 rounded-lg border-2 border-red-400 px-2 py-0.5">
-        <Text className="text-xs font-bold text-red-500">DISMISS</Text>
+      <Animated.View style={{ opacity: dismissHintOpacity }} className="absolute right-4 top-4 z-10 rounded-lg border-2 border-destructive px-2 py-0.5">
+        <Text className="text-xs font-bold text-destructive">DISMISS</Text>
       </Animated.View>
 
       {/* Header: amount + direction */}
       <View className="mb-1 flex-row items-center justify-between">
-        <Text className={`text-3xl font-bold ${isCredit ? "text-green-600" : "text-gray-900"}`}>
+        <Text className={`text-3xl font-bold ${isCredit ? "text-success" : "text-foreground"}`}>
           {message.parsedAmount != null ? formatINR(message.parsedAmount) : "—"}
         </Text>
-        <View className={`rounded-full px-2.5 py-1 ${isCredit ? "bg-green-100" : "bg-red-100"}`}>
-          <Text className={`text-xs font-semibold ${isCredit ? "text-green-700" : "text-red-600"}`}>
+        <View className={`rounded-full px-2.5 py-1 ${isCredit ? "bg-success/15" : "bg-destructive/15"}`}>
+          <Text className={`text-xs font-semibold ${isCredit ? "text-success" : "text-destructive"}`}>
             {isCredit ? "Credit" : "Debit"}
           </Text>
         </View>
       </View>
-      <Text className="text-base font-medium text-gray-800" numberOfLines={1}>
+      <Text className="text-base font-medium text-foreground" numberOfLines={1}>
         {message.parsedMerchant ?? "Unknown merchant"}
       </Text>
-      <Text className="mb-3 text-xs text-gray-500">
+      <Text className="mb-3 text-xs text-muted-foreground">
         {formatDate(message.parsedDate ?? message.receivedAt)}
         {message.parsedAccountHint ? ` · ${message.parsedAccountHint}` : ""}
         {message.sender ? ` · ${message.sender}` : ""}
       </Text>
 
       {/* Raw message for context */}
-      <View className="mb-4 rounded-xl bg-gray-50 p-3">
-        <Text className="text-xs leading-4 text-gray-500" numberOfLines={3}>{message.rawText}</Text>
+      <View className="mb-4 rounded-xl bg-muted p-3">
+        <Text className="text-xs leading-4 text-muted-foreground" numberOfLines={3}>{message.rawText}</Text>
       </View>
 
       {isCredit && (
-        <Text className="mb-3 text-xs text-amber-600">
+        <Text className="mb-3 text-xs text-gold">
           This looks like money received. Saving will log it as an expense — dismiss it if that&apos;s wrong (income capture is on the web app).
         </Text>
       )}
 
       {/* Category (pre-filled from what you taught the app for this merchant) */}
-      <Text className="mb-1 text-sm font-medium text-gray-700">Category</Text>
+      <Text className="mb-1 text-sm font-medium text-foreground">Category</Text>
       <TextInput
-        className="mb-3 rounded-lg border border-gray-300 px-4 py-2.5 text-base text-gray-900"
+        className="mb-3 rounded-lg border border-input bg-background px-4 py-2.5 text-base text-foreground"
+        placeholderTextColor={theme.mutedForeground}
         placeholder="e.g. Food, Groceries"
         value={category}
         onChangeText={setCategory}
       />
 
-      <Text className="mb-1 text-sm font-medium text-gray-700">Payment method</Text>
+      <Text className="mb-1 text-sm font-medium text-foreground">Payment method</Text>
       <Chips
         options={PAYMENT_METHODS.map((m) => ({ value: m, label: PAYMENT_METHOD_LABELS[m] }))}
         value={paymentMethod}
@@ -238,7 +241,7 @@ export function ReviewCard({
 
       {paymentMethod === "BANK_TRANSFER" && accountList.length > 0 && (
         <>
-          <Text className="mb-1 mt-2 text-sm font-medium text-gray-700">Account</Text>
+          <Text className="mb-1 mt-2 text-sm font-medium text-foreground">Account</Text>
           <Chips
             options={accountList.map((a) => ({ value: a.id, label: `${a.bankName} ${a.maskedNumber}` }))}
             value={bankAccountId}
@@ -248,9 +251,9 @@ export function ReviewCard({
       )}
       {paymentMethod === "CREDIT_CARD" && cardList.length > 0 && (
         <>
-          <Text className="mb-1 mt-2 text-sm font-medium text-gray-700">Card</Text>
+          <Text className="mb-1 mt-2 text-sm font-medium text-foreground">Card</Text>
           <Chips
-            options={cardList.map((c) => ({ value: c.id, label: `${c.cardName} ····${c.lastFourDigits}` }))}
+            options={cardList.map((card) => ({ value: card.id, label: `${card.cardName} ····${card.lastFourDigits}` }))}
             value={creditCardId}
             onChange={setCreditCardId}
           />
@@ -260,18 +263,18 @@ export function ReviewCard({
       {/* Receipt prompt — hidden for merchants you've opted out of. */}
       {message.askReceipt ? (
         attachment ? (
-          <View className="mt-3 flex-row items-center justify-between rounded-lg bg-indigo-50 px-3 py-2">
+          <View className="mt-3 flex-row items-center justify-between rounded-lg bg-secondary px-3 py-2">
             <View className="flex-1 flex-row items-center gap-2 pr-2">
-              <Ionicons name={attachment.isPdf ? "document-text-outline" : "image-outline"} size={18} color="#4f46e5" />
-              <Text className="flex-1 text-sm text-indigo-700" numberOfLines={1}>{attachment.name}</Text>
+              <Ionicons name={attachment.isPdf ? "document-text-outline" : "image-outline"} size={18} color={theme.primary} />
+              <Text className="flex-1 text-sm text-secondary-foreground" numberOfLines={1}>{attachment.name}</Text>
             </View>
             <TouchableOpacity onPress={() => setAttachment(null)}>
-              <Ionicons name="close-circle" size={20} color="#9ca3af" />
+              <Ionicons name="close-circle" size={20} color={theme.mutedForeground} />
             </TouchableOpacity>
           </View>
         ) : (
           <View className="mt-3">
-            <Text className="mb-1.5 text-sm font-medium text-gray-700">Add a receipt?</Text>
+            <Text className="mb-1.5 text-sm font-medium text-foreground">Add a receipt?</Text>
             <View className="flex-row gap-2">
               <ReceiptBtn icon="camera-outline" label="Camera" onPress={() => onAttach("camera")} />
               <ReceiptBtn icon="images-outline" label="Gallery" onPress={() => onAttach("gallery")} />
@@ -281,34 +284,34 @@ export function ReviewCard({
               className="mt-2 flex-row items-center gap-1.5"
               onPress={() => setReceiptDeclined((v) => !v)}
             >
-              <Ionicons name={receiptDeclined ? "checkbox" : "square-outline"} size={18} color={receiptDeclined ? "#4f46e5" : "#9ca3af"} />
-              <Text className="text-xs text-gray-600">Don&apos;t ask for receipts from this merchant again</Text>
+              <Ionicons name={receiptDeclined ? "checkbox" : "square-outline"} size={18} color={receiptDeclined ? theme.primary : theme.mutedForeground} />
+              <Text className="text-xs text-muted-foreground">Don&apos;t ask for receipts from this merchant again</Text>
             </TouchableOpacity>
           </View>
         )
       ) : (
-        <Text className="mt-3 text-xs text-gray-400">Receipts are off for this merchant.</Text>
+        <Text className="mt-3 text-xs text-muted-foreground">Receipts are off for this merchant.</Text>
       )}
 
       {/* Actions */}
       <View className="mt-5 flex-row gap-3">
         <TouchableOpacity
-          className="flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-gray-300 py-3.5"
+          className="flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-border py-3.5"
           disabled={busy}
           onPress={doDismiss}
         >
-          <Ionicons name="close" size={18} color="#6b7280" />
-          <Text className="font-semibold text-gray-600">Dismiss</Text>
+          <Ionicons name="close" size={18} color={theme.mutedForeground} />
+          <Text className="font-semibold text-muted-foreground">Dismiss</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          className="flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-brand py-3.5"
+          className="flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-primary py-3.5"
           disabled={busy}
           onPress={doSave}
         >
-          {busy ? <ActivityIndicator color="white" /> : (
+          {busy ? <ActivityIndicator color={theme.primaryForeground} /> : (
             <>
-              <Ionicons name="checkmark" size={18} color="white" />
-              <Text className="font-semibold text-white">Save expense</Text>
+              <Ionicons name="checkmark" size={18} color={theme.primaryForeground} />
+              <Text className="font-semibold text-primary-foreground">Save expense</Text>
             </>
           )}
         </TouchableOpacity>
@@ -326,13 +329,14 @@ function ReceiptBtn({
   label: string
   onPress: () => void
 }) {
+  const theme = useThemeColors()
   return (
     <TouchableOpacity
       onPress={onPress}
-      className="flex-1 flex-row items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-white py-2.5"
+      className="flex-1 flex-row items-center justify-center gap-1.5 rounded-lg border border-border bg-muted py-2.5"
     >
-      <Ionicons name={icon} size={16} color="#4f46e5" />
-      <Text className="text-xs font-medium text-gray-700">{label}</Text>
+      <Ionicons name={icon} size={16} color={theme.primary} />
+      <Text className="text-xs font-medium text-foreground">{label}</Text>
     </TouchableOpacity>
   )
 }

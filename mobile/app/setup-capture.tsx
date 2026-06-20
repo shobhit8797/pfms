@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons"
 import { useFocusEffect } from "expo-router"
 import { ApiError } from "@pfms/shared"
 import { useConnectGoogle, useDisconnectGoogle, useGmailStatus, useIssueToken } from "../lib/hooks"
+import { useThemeColors } from "../lib/theme"
 import { API_BASE_URL } from "../lib/config"
 import { formatDate } from "../lib/format"
 
@@ -16,6 +17,7 @@ const ENDPOINT = `${API_BASE_URL}/api/v1/messages`
  */
 export default function SetupCaptureScreen() {
   const issue = useIssueToken()
+  const c = useThemeColors()
   const [token, setToken] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -30,68 +32,68 @@ export default function SetupCaptureScreen() {
   }
 
   return (
-    <ScrollView className="flex-1 bg-gray-50" contentContainerClassName="p-5 pb-16">
-      <Text className="text-2xl font-bold text-gray-900">Auto-capture transactions</Text>
-      <Text className="mt-1 text-sm leading-5 text-gray-600">
+    <ScrollView className="flex-1 bg-background" contentContainerClassName="p-5 pb-16">
+      <Text className="text-2xl font-bold text-foreground">Auto-capture transactions</Text>
+      <Text className="mt-1 text-sm leading-5 text-muted-foreground">
         Connect Gmail to read transaction emails automatically, and set up an SMS shortcut for
         bank texts. Captured transactions appear on the Review tab.
       </Text>
 
       <GmailSection />
 
-      <Text className="mt-7 text-lg font-semibold text-gray-900">Bank SMS (optional)</Text>
-      <Text className="mt-1 text-sm leading-5 text-gray-600">
+      <Text className="mt-7 text-lg font-semibold text-foreground">Bank SMS (optional)</Text>
+      <Text className="mt-1 text-sm leading-5 text-muted-foreground">
         iOS can&apos;t read your Messages, but the Shortcuts app can forward a bank SMS here when it
         arrives. Set it up once.
       </Text>
 
       {/* Step 1: token */}
       <Section n={1} title="Generate your secret token">
-        <Text className="text-sm leading-5 text-gray-600">
+        <Text className="text-sm leading-5 text-muted-foreground">
           This authorizes the shortcut to add transactions to your account. Keep it private.
         </Text>
         {token ? (
           <View className="mt-3">
-            <Text className="mb-1 text-xs font-medium text-gray-500">Your token (long-press to copy)</Text>
+            <Text className="mb-1 text-xs font-medium text-muted-foreground">Your token (long-press to copy)</Text>
             <TextInput
-              className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 font-mono text-xs text-gray-900"
+              className="rounded-lg border border-input bg-background px-3 py-2.5 font-mono text-xs text-foreground"
               value={token}
               editable={false}
               selectTextOnFocus
               multiline
             />
-            <Text className="mt-1 text-xs text-amber-600">Shown once — copy it now before leaving this screen.</Text>
+            <Text className="mt-1 text-xs text-gold">Shown once — copy it now before leaving this screen.</Text>
           </View>
         ) : (
           <TouchableOpacity
             onPress={generate}
             disabled={issue.isPending}
-            className="mt-3 flex-row items-center justify-center gap-2 rounded-xl bg-brand py-3"
+            className="mt-3 flex-row items-center justify-center gap-2 rounded-xl bg-primary py-3"
           >
-            {issue.isPending ? <ActivityIndicator color="white" /> : (
+            {issue.isPending ? <ActivityIndicator color={c.primaryForeground} /> : (
               <>
-                <Ionicons name="key-outline" size={18} color="white" />
-                <Text className="font-semibold text-white">Generate token</Text>
+                <Ionicons name="key-outline" size={18} color={c.primaryForeground} />
+                <Text className="font-semibold text-primary-foreground">Generate token</Text>
               </>
             )}
           </TouchableOpacity>
         )}
-        {error ? <Text className="mt-2 text-sm text-red-600">{error}</Text> : null}
+        {error ? <Text className="mt-2 text-sm text-destructive">{error}</Text> : null}
       </Section>
 
       {/* Step 2: endpoint */}
       <Section n={2} title="Copy the endpoint">
         <CopyField label="Request URL" value={ENDPOINT} />
-        <Text className="mt-2 text-xs text-gray-500">Method: POST · Header: Authorization = Bearer &lt;your token&gt; · Content-Type: application/json</Text>
-        <Text className="mt-2 text-xs font-medium text-gray-500">Request body (JSON)</Text>
+        <Text className="mt-2 text-xs text-muted-foreground">Method: POST · Header: Authorization = Bearer &lt;your token&gt; · Content-Type: application/json</Text>
+        <Text className="mt-2 text-xs font-medium text-muted-foreground">Request body (JSON)</Text>
         <TextInput
-          className="mt-1 rounded-lg border border-gray-300 bg-white px-3 py-2.5 font-mono text-xs text-gray-900"
+          className="mt-1 rounded-lg border border-input bg-background px-3 py-2.5 font-mono text-xs text-foreground"
           value={'{\n  "text": "[Shortcut Input]",\n  "source": "IOS_SHORTCUT"\n}'}
           editable={false}
           selectTextOnFocus
           multiline
         />
-        <Text className="mt-1 text-xs text-gray-500">
+        <Text className="mt-1 text-xs text-muted-foreground">
           Replace <Text className="font-mono">[Shortcut Input]</Text> with the &quot;Shortcut Input&quot; magic variable in the Shortcuts editor.
         </Text>
       </Section>
@@ -107,8 +109,8 @@ export default function SetupCaptureScreen() {
         <Step text="Save. New bank SMS now appear in Review automatically." />
       </Section>
 
-      <View className="mt-5 rounded-xl bg-indigo-50 p-4">
-        <Text className="text-xs leading-5 text-indigo-700">
+      <View className="mt-5 rounded-xl border border-primary/30 bg-secondary p-4">
+        <Text className="text-xs leading-5 text-secondary-foreground">
           No shortcut yet? You can still capture any message by tapping the clipboard button on the Review tab and
           pasting it.
         </Text>
@@ -124,6 +126,7 @@ export default function SetupCaptureScreen() {
  */
 function GmailSection() {
   const status = useGmailStatus()
+  const c = useThemeColors()
   const connect = useConnectGoogle()
   const disconnect = useDisconnectGoogle()
 
@@ -150,23 +153,23 @@ function GmailSection() {
   const connected = data?.connected === true
 
   return (
-    <View className="mt-5 rounded-2xl bg-white p-4">
+    <View className="mt-5 rounded-2xl border border-border bg-card p-4">
       <View className="mb-2 flex-row items-center gap-2">
-        <Ionicons name="mail" size={18} color="#4f46e5" />
-        <Text className="text-base font-semibold text-gray-900">Gmail</Text>
+        <Ionicons name="mail" size={18} color={c.primary} />
+        <Text className="text-base font-semibold text-foreground">Gmail</Text>
         {connected && (
-          <View className="ml-auto rounded-full bg-green-100 px-2.5 py-0.5">
-            <Text className="text-xs font-semibold text-green-700">Connected</Text>
+          <View className="ml-auto rounded-full bg-success/15 px-2.5 py-0.5">
+            <Text className="text-xs font-semibold text-success">Connected</Text>
           </View>
         )}
       </View>
 
       {status.isLoading ? (
-        <ActivityIndicator className="my-3" color="#4f46e5" />
+        <ActivityIndicator className="my-3" color={c.primary} />
       ) : connected && data.connected ? (
         <>
-          <Text className="text-sm text-gray-700">{data.email}</Text>
-          <Text className="mt-0.5 text-xs text-gray-500">
+          <Text className="text-sm text-foreground">{data.email}</Text>
+          <Text className="mt-0.5 text-xs text-muted-foreground">
             {data.status === "CONNECTED"
               ? data.lastSyncedAt
                 ? `Last checked ${formatDate(data.lastSyncedAt)}`
@@ -177,30 +180,30 @@ function GmailSection() {
           </Text>
           <View className="mt-3 flex-row gap-2">
             {data.status !== "CONNECTED" && (
-              <TouchableOpacity onPress={onConnect} disabled={connect.isPending} className="flex-1 items-center rounded-xl bg-brand py-2.5">
-                <Text className="text-sm font-semibold text-white">Reconnect</Text>
+              <TouchableOpacity onPress={onConnect} disabled={connect.isPending} className="flex-1 items-center rounded-xl bg-primary py-2.5">
+                <Text className="text-sm font-semibold text-primary-foreground">Reconnect</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity onPress={onDisconnect} disabled={disconnect.isPending} className="flex-1 items-center rounded-xl border border-gray-300 py-2.5">
-              <Text className="text-sm font-semibold text-gray-700">Disconnect</Text>
+            <TouchableOpacity onPress={onDisconnect} disabled={disconnect.isPending} className="flex-1 items-center rounded-xl border border-border py-2.5">
+              <Text className="text-sm font-semibold text-foreground">Disconnect</Text>
             </TouchableOpacity>
           </View>
         </>
       ) : (
         <>
-          <Text className="text-sm leading-5 text-gray-600">
+          <Text className="text-sm leading-5 text-muted-foreground">
             Read transaction emails (receipts, bank alerts) automatically. We only scan
             transaction-like mail, never your whole inbox.
           </Text>
           <TouchableOpacity
             onPress={onConnect}
             disabled={connect.isPending}
-            className="mt-3 flex-row items-center justify-center gap-2 rounded-xl bg-brand py-3"
+            className="mt-3 flex-row items-center justify-center gap-2 rounded-xl bg-primary py-3"
           >
-            {connect.isPending ? <ActivityIndicator color="white" /> : (
+            {connect.isPending ? <ActivityIndicator color={c.primaryForeground} /> : (
               <>
-                <Ionicons name="logo-google" size={16} color="white" />
-                <Text className="font-semibold text-white">Connect Gmail</Text>
+                <Ionicons name="logo-google" size={16} color={c.primaryForeground} />
+                <Text className="font-semibold text-primary-foreground">Connect Gmail</Text>
               </>
             )}
           </TouchableOpacity>
@@ -212,12 +215,12 @@ function GmailSection() {
 
 function Section({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
-    <View className="mt-5 rounded-2xl bg-white p-4">
+    <View className="mt-5 rounded-2xl border border-border bg-card p-4">
       <View className="mb-2 flex-row items-center gap-2">
-        <View className="h-6 w-6 items-center justify-center rounded-full bg-brand">
-          <Text className="text-xs font-bold text-white">{n}</Text>
+        <View className="h-6 w-6 items-center justify-center rounded-full bg-primary">
+          <Text className="text-xs font-bold text-primary-foreground">{n}</Text>
         </View>
-        <Text className="text-base font-semibold text-gray-900">{title}</Text>
+        <Text className="text-base font-semibold text-foreground">{title}</Text>
       </View>
       {children}
     </View>
@@ -227,9 +230,9 @@ function Section({ n, title, children }: { n: number; title: string; children: R
 function CopyField({ label, value }: { label: string; value: string }) {
   return (
     <View>
-      <Text className="mb-1 text-xs font-medium text-gray-500">{label}</Text>
+      <Text className="mb-1 text-xs font-medium text-muted-foreground">{label}</Text>
       <TextInput
-        className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 font-mono text-xs text-gray-900"
+        className="rounded-lg border border-input bg-background px-3 py-2.5 font-mono text-xs text-foreground"
         value={value}
         editable={false}
         selectTextOnFocus
@@ -239,10 +242,11 @@ function CopyField({ label, value }: { label: string; value: string }) {
 }
 
 function Step({ text }: { text: string }) {
+  const c = useThemeColors()
   return (
     <View className="mb-2 flex-row gap-2">
-      <Ionicons name="ellipse" size={6} color="#9ca3af" style={{ marginTop: 6 }} />
-      <Text className="flex-1 text-sm leading-5 text-gray-600">{text}</Text>
+      <Ionicons name="ellipse" size={6} color={c.mutedForeground} style={{ marginTop: 6 }} />
+      <Text className="flex-1 text-sm leading-5 text-muted-foreground">{text}</Text>
     </View>
   )
 }

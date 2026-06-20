@@ -10,6 +10,7 @@ import {
 } from "@pfms/shared"
 import { useAccounts, useCards, useCreateExpense, useScanReceipt } from "../lib/hooks"
 import { useAuth } from "../lib/auth"
+import { useThemeColors } from "../lib/theme"
 import { todayISO } from "../lib/format"
 import { captureReceiptPhoto, pickReceiptDocument, pickReceiptImage, type PickedReceipt } from "../lib/receipt"
 import { cacheReceiptLocally, uploadReceipt } from "../lib/receipt-store"
@@ -20,6 +21,7 @@ export function AddExpenseModal({ visible, onClose }: { visible: boolean; onClos
   const scan = useScanReceipt()
   const accounts = useAccounts()
   const cards = useCards()
+  const c = useThemeColors()
   const { getToken } = useAuth()
 
   const [amount, setAmount] = useState("")
@@ -139,36 +141,36 @@ export function AddExpenseModal({ visible, onClose }: { visible: boolean; onClos
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <ScrollView className="flex-1 bg-white px-6 pt-6" keyboardShouldPersistTaps="handled">
-        <Text className="mb-4 text-2xl font-bold text-gray-900">Add expense</Text>
+      <ScrollView className="flex-1 bg-background px-6 pt-6" keyboardShouldPersistTaps="handled">
+        <Text className="mb-4 text-2xl font-bold text-foreground">Add expense</Text>
 
         {/* AI receipt scan — attach a photo/PDF and auto-fill the fields below. */}
-        <View className="mb-5 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+        <View className="mb-5 rounded-2xl border border-border bg-card p-4">
           <View className="mb-3 flex-row items-center gap-2">
-            <Ionicons name="sparkles" size={16} color="#4f46e5" />
-            <Text className="text-sm font-semibold text-gray-800">Scan a receipt</Text>
+            <Ionicons name="sparkles" size={16} color={c.primary} />
+            <Text className="text-sm font-semibold text-foreground">Scan a receipt</Text>
           </View>
 
           {scan.isPending ? (
             <View className="flex-row items-center gap-2 py-1">
-              <ActivityIndicator color="#4f46e5" />
-              <Text className="text-sm text-gray-600">Reading receipt…</Text>
+              <ActivityIndicator color={c.primary} />
+              <Text className="text-sm text-muted-foreground">Reading receipt…</Text>
             </View>
           ) : attachment ? (
             <>
-              <View className="flex-row items-center justify-between rounded-lg bg-white px-3 py-2">
+              <View className="flex-row items-center justify-between rounded-lg bg-muted px-3 py-2">
                 <View className="flex-1 flex-row items-center gap-2 pr-2">
-                  <Ionicons name={attachment.isPdf ? "document-text-outline" : "image-outline"} size={18} color="#4f46e5" />
-                  <Text className="flex-1 text-sm text-gray-700" numberOfLines={1}>{attachment.name}</Text>
+                  <Ionicons name={attachment.isPdf ? "document-text-outline" : "image-outline"} size={18} color={c.primary} />
+                  <Text className="flex-1 text-sm text-foreground" numberOfLines={1}>{attachment.name}</Text>
                 </View>
                 <TouchableOpacity onPress={() => { setAttachment(null); setScannedNotice(false) }}>
-                  <Ionicons name="close-circle" size={20} color="#9ca3af" />
+                  <Ionicons name="close-circle" size={20} color={c.mutedForeground} />
                 </TouchableOpacity>
               </View>
               {/* Voluntary: keep the file attached to the expense (else it's scan-only). */}
               <View className="mt-3 flex-row items-center justify-between">
-                <Text className="flex-1 pr-3 text-sm text-gray-700">Save receipt with this expense</Text>
-                <Switch value={keepReceipt} onValueChange={setKeepReceipt} trackColor={{ true: "#4f46e5" }} />
+                <Text className="flex-1 pr-3 text-sm text-foreground">Save receipt with this expense</Text>
+                <Switch value={keepReceipt} onValueChange={setKeepReceipt} trackColor={{ true: c.primary, false: c.border }} thumbColor={c.card} />
               </View>
             </>
           ) : (
@@ -180,25 +182,25 @@ export function AddExpenseModal({ visible, onClose }: { visible: boolean; onClos
           )}
 
           {scannedNotice ? (
-            <Text className="mt-2 text-xs text-indigo-600">Filled from your receipt — please review before saving.</Text>
+            <Text className="mt-2 text-xs text-primary">Filled from your receipt — please review before saving.</Text>
           ) : (
             !attachment && !scan.isPending && (
-              <Text className="mt-2 text-xs text-gray-400">AI reads the amount, description, category, date & payment method.</Text>
+              <Text className="mt-2 text-xs text-muted-foreground">AI reads the amount, description, category, date & payment method.</Text>
             )
           )}
         </View>
 
         <Field label="Amount">
-          <TextInput className={inputCls} keyboardType="decimal-pad" placeholder="0" value={amount} onChangeText={setAmount} />
+          <TextInput className={inputCls} placeholderTextColor={c.mutedForeground} keyboardType="decimal-pad" placeholder="0" value={amount} onChangeText={setAmount} />
         </Field>
         <Field label="Description">
-          <TextInput className={inputCls} placeholder="e.g. Groceries" value={description} onChangeText={setDescription} />
+          <TextInput className={inputCls} placeholderTextColor={c.mutedForeground} placeholder="e.g. Groceries" value={description} onChangeText={setDescription} />
         </Field>
         <Field label="Category">
-          <TextInput className={inputCls} placeholder="e.g. Food" value={category} onChangeText={setCategory} />
+          <TextInput className={inputCls} placeholderTextColor={c.mutedForeground} placeholder="e.g. Food" value={category} onChangeText={setCategory} />
         </Field>
         <Field label="Date">
-          <TextInput className={inputCls} placeholder="YYYY-MM-DD" autoCapitalize="none" value={expenseDate} onChangeText={setExpenseDate} />
+          <TextInput className={inputCls} placeholderTextColor={c.mutedForeground} placeholder="YYYY-MM-DD" autoCapitalize="none" value={expenseDate} onChangeText={setExpenseDate} />
         </Field>
 
         <Text className={labelCls}>Payment method</Text>
@@ -222,21 +224,21 @@ export function AddExpenseModal({ visible, onClose }: { visible: boolean; onClos
           <>
             <Text className={labelCls}>Card</Text>
             <Chips
-              options={(cards.data?.items ?? []).map((c) => ({ value: c.id, label: `${c.cardName} ····${c.lastFourDigits}` }))}
+              options={(cards.data?.items ?? []).map((card) => ({ value: card.id, label: `${card.cardName} ····${card.lastFourDigits}` }))}
               value={creditCardId}
               onChange={setCreditCardId}
             />
           </>
         )}
 
-        {error ? <Text className="mt-2 text-sm text-red-600">{error}</Text> : null}
+        {error ? <Text className="mt-2 text-sm text-destructive">{error}</Text> : null}
 
         <View className="mb-10 mt-6 flex-row gap-3">
-          <TouchableOpacity className="flex-1 items-center rounded-lg border border-gray-300 py-4" onPress={() => { reset(); onClose() }}>
-            <Text className="font-semibold text-gray-700">Cancel</Text>
+          <TouchableOpacity className="flex-1 items-center rounded-lg border border-border py-4" onPress={() => { reset(); onClose() }}>
+            <Text className="font-semibold text-foreground">Cancel</Text>
           </TouchableOpacity>
-          <TouchableOpacity className="flex-1 items-center rounded-lg bg-brand py-4" disabled={create.isPending || uploading} onPress={onSubmit}>
-            {create.isPending || uploading ? <ActivityIndicator color="white" /> : <Text className="font-semibold text-white">Save</Text>}
+          <TouchableOpacity className="flex-1 items-center rounded-lg bg-primary py-4" disabled={create.isPending || uploading} onPress={onSubmit}>
+            {create.isPending || uploading ? <ActivityIndicator color={c.primaryForeground} /> : <Text className="font-semibold text-primary-foreground">Save</Text>}
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -244,8 +246,8 @@ export function AddExpenseModal({ visible, onClose }: { visible: boolean; onClos
   )
 }
 
-const inputCls = "rounded-lg border border-gray-300 px-4 py-3 text-base text-gray-900"
-const labelCls = "mb-1 mt-3 text-sm font-medium text-gray-700"
+const inputCls = "rounded-lg border border-input bg-card px-4 py-3 text-base text-foreground"
+const labelCls = "mb-1 mt-3 text-sm font-medium text-foreground"
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -265,13 +267,14 @@ function AttachButton({
   label: string
   onPress: () => void
 }) {
+  const c = useThemeColors()
   return (
     <TouchableOpacity
       onPress={onPress}
-      className="flex-1 flex-row items-center justify-center gap-1.5 rounded-lg border border-gray-300 bg-white py-3"
+      className="flex-1 flex-row items-center justify-center gap-1.5 rounded-lg border border-border bg-muted py-3"
     >
-      <Ionicons name={icon} size={18} color="#4f46e5" />
-      <Text className="text-sm font-medium text-gray-700">{label}</Text>
+      <Ionicons name={icon} size={18} color={c.primary} />
+      <Text className="text-sm font-medium text-foreground">{label}</Text>
     </TouchableOpacity>
   )
 }

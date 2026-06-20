@@ -1,3 +1,67 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Theme tokens mirrored from the web app (app/globals.css). The web stores them
+ * as oklch; React Native can't parse oklch, so these are the same colors
+ * converted to "R G B" channel triplets (usable with `rgb(var(--x)/<alpha>)`).
+ * Light = "Warm Cream Luxury", dark = "Deep Charcoal Luxury". We follow the
+ * device color scheme via prefers-color-scheme, matching the web's next-themes
+ * system default. Keep these in sync with lib/theme.ts (the JS-prop palette).
+ */
+@layer base {
+  :root {
+    --background: 250 248 245;
+    --foreground: 14 10 7;
+    --card: 255 255 255;
+    --card-foreground: 14 10 7;
+    --popover: 255 255 255;
+    --popover-foreground: 14 10 7;
+    --primary: 185 131 44;
+    --primary-foreground: 250 248 245;
+    --secondary: 239 235 228;
+    --secondary-foreground: 37 33 29;
+    --muted: 238 235 229;
+    --muted-foreground: 104 98 94;
+    --accent: 239 235 228;
+    --accent-foreground: 37 33 29;
+    --destructive: 184 68 85;
+    --destructive-foreground: 250 248 245;
+    --success: 17 134 89;
+    --success-foreground: 250 248 245;
+    --gold: 215 150 40;
+    --gold-muted: 194 158 107;
+    --border: 225 221 215;
+    --input: 225 221 215;
+    --ring: 185 131 44;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background: 7 5 4;
+      --foreground: 240 238 235;
+      --card: 15 13 11;
+      --card-foreground: 240 238 235;
+      --popover: 15 13 11;
+      --popover-foreground: 240 238 235;
+      --primary: 235 169 65;
+      --primary-foreground: 7 5 4;
+      --secondary: 28 26 24;
+      --secondary-foreground: 240 238 235;
+      --muted: 28 26 24;
+      --muted-foreground: 131 128 122;
+      --accent: 30 26 22;
+      --accent-foreground: 240 238 235;
+      --destructive: 201 84 99;
+      --destructive-foreground: 240 238 235;
+      --success: 43 150 103;
+      --success-foreground: 7 5 4;
+      --gold: 235 169 65;
+      --gold-muted: 172 136 86;
+      --border: 37 33 29;
+      --input: 37 33 29;
+      --ring: 235 169 65;
+    }
+  }
+}

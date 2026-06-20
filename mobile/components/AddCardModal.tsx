@@ -2,9 +2,11 @@ import { useState } from "react"
 import { ActivityIndicator, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from "react-native"
 import { ApiError, cardCreateSchema } from "@pfms/shared"
 import { useCreateCard } from "../lib/hooks"
+import { useThemeColors } from "../lib/theme"
 
 export function AddCardModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const create = useCreateCard()
+  const c = useThemeColors()
 
   const [cardName, setCardName] = useState("")
   const [bankName, setBankName] = useState("")
@@ -40,18 +42,19 @@ export function AddCardModal({ visible, onClose }: { visible: boolean; onClose: 
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <ScrollView className="flex-1 bg-white px-6 pt-6" keyboardShouldPersistTaps="handled">
-        <Text className="mb-5 text-2xl font-bold text-gray-900">Add card</Text>
+      <ScrollView className="flex-1 bg-background px-6 pt-6" keyboardShouldPersistTaps="handled">
+        <Text className="mb-5 text-2xl font-bold text-foreground">Add card</Text>
 
         <Field label="Card name">
-          <TextInput className={inputCls} placeholder="e.g. HDFC Regalia" value={cardName} onChangeText={setCardName} />
+          <TextInput className={inputCls} placeholderTextColor={c.mutedForeground} placeholder="e.g. HDFC Regalia" value={cardName} onChangeText={setCardName} />
         </Field>
         <Field label="Bank name">
-          <TextInput className={inputCls} placeholder="e.g. HDFC Bank" value={bankName} onChangeText={setBankName} />
+          <TextInput className={inputCls} placeholderTextColor={c.mutedForeground} placeholder="e.g. HDFC Bank" value={bankName} onChangeText={setBankName} />
         </Field>
         <Field label="Last 4 digits">
           <TextInput
             className={inputCls}
+            placeholderTextColor={c.mutedForeground}
             placeholder="1234"
             keyboardType="number-pad"
             maxLength={4}
@@ -60,35 +63,35 @@ export function AddCardModal({ visible, onClose }: { visible: boolean; onClose: 
           />
         </Field>
         <Field label="Credit limit (₹)">
-          <TextInput className={inputCls} keyboardType="decimal-pad" placeholder="100000" value={creditLimit} onChangeText={setCreditLimit} />
+          <TextInput className={inputCls} placeholderTextColor={c.mutedForeground} keyboardType="decimal-pad" placeholder="100000" value={creditLimit} onChangeText={setCreditLimit} />
         </Field>
         <Field label="Current outstanding (₹)">
-          <TextInput className={inputCls} keyboardType="decimal-pad" placeholder="0" value={currentOutstanding} onChangeText={setCurrentOutstanding} />
+          <TextInput className={inputCls} placeholderTextColor={c.mutedForeground} keyboardType="decimal-pad" placeholder="0" value={currentOutstanding} onChangeText={setCurrentOutstanding} />
         </Field>
         <Field label="Billing date (day of month)">
-          <TextInput className={inputCls} keyboardType="number-pad" placeholder="1–31" maxLength={2} value={billingDate} onChangeText={setBillingDate} />
+          <TextInput className={inputCls} placeholderTextColor={c.mutedForeground} keyboardType="number-pad" placeholder="1–31" maxLength={2} value={billingDate} onChangeText={setBillingDate} />
         </Field>
         <Field label="Due date (day of month)">
-          <TextInput className={inputCls} keyboardType="number-pad" placeholder="1–31" maxLength={2} value={dueDate} onChangeText={setDueDate} />
+          <TextInput className={inputCls} placeholderTextColor={c.mutedForeground} keyboardType="number-pad" placeholder="1–31" maxLength={2} value={dueDate} onChangeText={setDueDate} />
         </Field>
 
-        {error ? <Text className="mt-2 text-sm text-red-600">{error}</Text> : null}
+        {error ? <Text className="mt-2 text-sm text-destructive">{error}</Text> : null}
 
         <View className="mb-10 mt-6 flex-row gap-3">
           <TouchableOpacity
-            className="flex-1 items-center rounded-lg border border-gray-300 py-4"
+            className="flex-1 items-center rounded-lg border border-border py-4"
             onPress={() => { reset(); onClose() }}
           >
-            <Text className="font-semibold text-gray-700">Cancel</Text>
+            <Text className="font-semibold text-foreground">Cancel</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            className="flex-1 items-center rounded-lg bg-brand py-4"
+            className="flex-1 items-center rounded-lg bg-primary py-4"
             disabled={create.isPending}
             onPress={onSubmit}
           >
             {create.isPending
-              ? <ActivityIndicator color="white" />
-              : <Text className="font-semibold text-white">Save card</Text>
+              ? <ActivityIndicator color={c.primaryForeground} />
+              : <Text className="font-semibold text-primary-foreground">Save card</Text>
             }
           </TouchableOpacity>
         </View>
@@ -97,8 +100,8 @@ export function AddCardModal({ visible, onClose }: { visible: boolean; onClose: 
   )
 }
 
-const inputCls = "rounded-lg border border-gray-300 px-4 py-3 text-base text-gray-900"
-const labelCls = "mb-1 mt-3 text-sm font-medium text-gray-700"
+const inputCls = "rounded-lg border border-input bg-card px-4 py-3 text-base text-foreground"
+const labelCls = "mb-1 mt-3 text-sm font-medium text-foreground"
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
