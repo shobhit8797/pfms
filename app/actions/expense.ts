@@ -1,42 +1,24 @@
 "use server"
 
 import { auth } from "@/auth"
-import { prisma } from "@/lib/db"
-import { Expense, Frequency, PaymentMethod } from "@prisma/client"
 import { revalidatePath } from "next/cache"
-import { z } from "zod"
-
-const expenseSchema = z.object({
-  amount: z.coerce.number().positive("Amount must be positive"),
-  expenseDate: z.string().transform((str) => new Date(str)),
-  category: z.string().min(1, "Category is required"),
-  subcategory: z.string().optional(),
-  description: z.string().min(1, "Description is required"),
-  paymentMethod: z.nativeEnum(PaymentMethod),
-  bankAccountId: z.string().optional(),
-  creditCardId: z.string().optional(),
-  isRecurring: z.boolean().optional(),
-  frequency: z.nativeEnum(Frequency).optional(),
-  isBusinessExpense: z.boolean().optional(),
-  isTaxDeductible: z.boolean().optional(),
-  taxSection: z.string().optional(),
-  notes: z.string().optional(),
-})
+import { ServiceError } from "@/lib/errors"
+import { expenseCreateSchema } from "@pfms/shared"
+import {
+  listExpenses,
+  createExpense as createExpenseService,
+  updateExpense as updateExpenseService,
+  deleteExpense as deleteExpenseService,
+} from "@/lib/services/expense.service"
 
 export type ExpenseState = {
   error?: string
   success?: string
 }
 
-export async function createExpense(prevState: ExpenseState | undefined, formData: FormData): Promise<ExpenseState> {
-  const session = await auth()
-  if (!session?.user?.id) {
-    return { error: "Unauthorized" }
-  }
-
-  const userId = session.user.id
-
-  const rawData = {
+/** Normalizes the expense FormData into a plain object for the shared Zod schema. */
+function parseExpenseForm(formData: FormData) {
+  return {
     amount: formData.get("amount"),
     expenseDate: formData.get("expenseDate"),
     category: formData.get("category"),
@@ -45,6 +27,7 @@ export async function createExpense(prevState: ExpenseState | undefined, formDat
     paymentMethod: formData.get("paymentMethod"),
     bankAccountId: formData.get("bankAccountId") || undefined,
     creditCardId: formData.get("creditCardId") || undefined,
+    debitCardId: formData.get("debitCardId") || undefined,
     isRecurring: formData.get("isRecurring") === "on",
     frequency: formData.get("frequency") || undefined,
     isBusinessExpense: formData.get("isBusinessExpense") === "on",
@@ -52,290 +35,67 @@ export async function createExpense(prevState: ExpenseState | undefined, formDat
     taxSection: formData.get("taxSection") || undefined,
     notes: formData.get("notes") || undefined,
   }
+}
 
-  const validated = expenseSchema.safeParse(rawData)
+function toErrorState(error: unknown, fallback: string): ExpenseState {
+  if (error instanceof ServiceError) return { error: error.message }
+  console.error(fallback, error)
+  return { error: fallback }
+}
 
-  if (!validated.success) {
-    console.error(validated.error)
-    return { error: "Invalid input data" }
-  }
+export async function createExpense(prevState: ExpenseState | undefined, formData: FormData): Promise<ExpenseState> {
+  const session = await auth()
+  if (!session?.user?.id) return { error: "Unauthorized" }
 
-  const data = validated.data
-
-  // Additional validation logic
-  if (data.isRecurring && !data.frequency) {
-    return { error: "Frequency is required for recurring expenses" }
-  }
-
-  if (data.paymentMethod === "BANK_TRANSFER" && !data.bankAccountId) {
-    return { error: "Bank account is required for bank transfer" }
-  }
-
-  if (data.paymentMethod === "CREDIT_CARD" && !data.creditCardId) {
-    return { error: "Credit card is required for credit card payment" }
-  }
-
-  // Verify ownership of any linked account/card (prevents cross-tenant balance writes)
-  if (data.bankAccountId) {
-    const owned = await prisma.bankAccount.findUnique({
-      where: { id: data.bankAccountId, userId },
-      select: { id: true },
-    })
-    if (!owned) return { error: "Bank account not found" }
-  }
-  if (data.creditCardId) {
-    const owned = await prisma.creditCard.findUnique({
-      where: { id: data.creditCardId, userId },
-      select: { id: true },
-    })
-    if (!owned) return { error: "Credit card not found" }
-  }
+  const parsed = expenseCreateSchema.safeParse(parseExpenseForm(formData))
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message || "Invalid input data" }
 
   try {
-    await prisma.$transaction(async (tx) => {
-      // Create expense
-      const expense = await tx.expense.create({
-        data: {
-          userId,
-          ...data,
-        },
-      })
-
-      // Update balances if applicable (scoped by userId)
-      if (data.paymentMethod === "BANK_TRANSFER" && data.bankAccountId) {
-        await tx.bankAccount.updateMany({
-          where: { id: data.bankAccountId, userId },
-          data: {
-            currentBalance: {
-              decrement: data.amount,
-            },
-          },
-        })
-      }
-
-      if (data.paymentMethod === "CREDIT_CARD" && data.creditCardId) {
-         await tx.creditCard.updateMany({
-          where: { id: data.creditCardId, userId },
-          data: {
-            currentOutstanding: {
-              increment: data.amount,
-            },
-            availableCredit: {
-                decrement: data.amount
-            }
-          },
-        })
-      }
-    })
-
+    await createExpenseService(session.user.id, parsed.data)
     revalidatePath("/dashboard/expenses")
-    revalidatePath("/dashboard/accounts") 
+    revalidatePath("/dashboard/accounts")
     revalidatePath("/dashboard")
     return { success: "Expense added successfully" }
   } catch (error) {
-    console.error("Create expense error:", error)
-    return { error: "Failed to create expense" }
+    return toErrorState(error, "Failed to create expense")
   }
 }
 
 export async function getExpenses(limit = 20, offset = 0) {
-    const session = await auth()
-    if (!session?.user?.id) return []
-  
-    const userId = session.user.id
-
-    return await prisma.expense.findMany({
-      where: { userId },
-      orderBy: { expenseDate: "desc" },
-      take: limit,
-      skip: offset,
-      include: {
-          bankAccount: {
-              select: { bankName: true, accountName: true }
-          },
-          creditCard: {
-              select: { cardName: true, lastFourDigits: true }
-          }
-      }
-    })
+  const session = await auth()
+  if (!session?.user?.id) return []
+  const { items } = await listExpenses(session.user.id, {}, limit, offset)
+  return items
 }
 
-export async function deleteExpense(expenseId: string) {
-    const session = await auth()
-    if (!session?.user?.id) return { error: "Unauthorized" }
-
-    const userId = session.user.id
-
-    try {
-        await prisma.$transaction(async (tx) => {
-            const expense = await tx.expense.findUnique({
-                where: { id: expenseId, userId },
-            })
-
-            if (!expense) throw new Error("Expense not found")
-
-            // Revert balances (scoped by userId)
-             if (expense.paymentMethod === "BANK_TRANSFER" && expense.bankAccountId) {
-                await tx.bankAccount.updateMany({
-                  where: { id: expense.bankAccountId, userId },
-                  data: {
-                    currentBalance: {
-                      increment: expense.amount,
-                    },
-                  },
-                })
-              }
-
-              if (expense.paymentMethod === "CREDIT_CARD" && expense.creditCardId) {
-                 await tx.creditCard.updateMany({
-                  where: { id: expense.creditCardId, userId },
-                  data: {
-                    currentOutstanding: {
-                      decrement: expense.amount,
-                    },
-                    availableCredit: {
-                        increment: expense.amount
-                    }
-                  },
-                })
-              }
-
-              await tx.expense.delete({
-                  where: { id: expenseId }
-              })
-        })
-
-        revalidatePath("/dashboard/expenses")
-        revalidatePath("/dashboard/accounts")
-        revalidatePath("/dashboard")
-        return { success: "Expense deleted" }
-    } catch (error) {
-        console.error("Delete expense error:", error)
-        return { error: "Failed to delete expense" }
-    }
-}
-
-export async function updateExpense(
-  expenseId: string,
-  formData: FormData
-): Promise<ExpenseState> {
+export async function deleteExpense(expenseId: string): Promise<ExpenseState> {
   const session = await auth()
   if (!session?.user?.id) return { error: "Unauthorized" }
-  const userId = session.user.id
+  try {
+    await deleteExpenseService(session.user.id, expenseId)
+    revalidatePath("/dashboard/expenses")
+    revalidatePath("/dashboard/accounts")
+    revalidatePath("/dashboard")
+    return { success: "Expense deleted" }
+  } catch (error) {
+    return toErrorState(error, "Failed to delete expense")
+  }
+}
 
-  const rawData = {
-    amount: formData.get("amount"),
-    expenseDate: formData.get("expenseDate"),
-    category: formData.get("category"),
-    subcategory: formData.get("subcategory") || undefined,
-    description: formData.get("description"),
-    paymentMethod: formData.get("paymentMethod"),
-    bankAccountId: formData.get("bankAccountId") || undefined,
-    creditCardId: formData.get("creditCardId") || undefined,
-    isRecurring: formData.get("isRecurring") === "on",
-    frequency: formData.get("frequency") || undefined,
-    isBusinessExpense: formData.get("isBusinessExpense") === "on",
-    isTaxDeductible: formData.get("isTaxDeductible") === "on",
-    taxSection: formData.get("taxSection") || undefined,
-    notes: formData.get("notes") || undefined,
-  }
+export async function updateExpense(expenseId: string, formData: FormData): Promise<ExpenseState> {
+  const session = await auth()
+  if (!session?.user?.id) return { error: "Unauthorized" }
 
-  const validated = expenseSchema.safeParse(rawData)
-  if (!validated.success) {
-    return { error: validated.error.issues[0]?.message || "Invalid input data" }
-  }
-  const data = validated.data
-
-  if (data.paymentMethod === "BANK_TRANSFER" && !data.bankAccountId) {
-    return { error: "Bank account is required for bank transfer" }
-  }
-  if (data.paymentMethod === "CREDIT_CARD" && !data.creditCardId) {
-    return { error: "Credit card is required for credit card payment" }
-  }
-
-  // Verify ownership of any newly linked account/card
-  if (data.bankAccountId) {
-    const owned = await prisma.bankAccount.findUnique({
-      where: { id: data.bankAccountId, userId },
-      select: { id: true },
-    })
-    if (!owned) return { error: "Bank account not found" }
-  }
-  if (data.creditCardId) {
-    const owned = await prisma.creditCard.findUnique({
-      where: { id: data.creditCardId, userId },
-      select: { id: true },
-    })
-    if (!owned) return { error: "Credit card not found" }
-  }
+  const parsed = expenseCreateSchema.safeParse(parseExpenseForm(formData))
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message || "Invalid input data" }
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const existing = await tx.expense.findUnique({ where: { id: expenseId, userId } })
-      if (!existing) throw new Error("Expense not found")
-
-      // Revert the OLD balance/outstanding effect
-      if (existing.paymentMethod === "BANK_TRANSFER" && existing.bankAccountId) {
-        await tx.bankAccount.updateMany({
-          where: { id: existing.bankAccountId, userId },
-          data: { currentBalance: { increment: existing.amount } },
-        })
-      }
-      if (existing.paymentMethod === "CREDIT_CARD" && existing.creditCardId) {
-        await tx.creditCard.updateMany({
-          where: { id: existing.creditCardId, userId },
-          data: {
-            currentOutstanding: { decrement: existing.amount },
-            availableCredit: { increment: existing.amount },
-          },
-        })
-      }
-
-      // Apply the NEW effect
-      if (data.paymentMethod === "BANK_TRANSFER" && data.bankAccountId) {
-        await tx.bankAccount.updateMany({
-          where: { id: data.bankAccountId, userId },
-          data: { currentBalance: { decrement: data.amount } },
-        })
-      }
-      if (data.paymentMethod === "CREDIT_CARD" && data.creditCardId) {
-        await tx.creditCard.updateMany({
-          where: { id: data.creditCardId, userId },
-          data: {
-            currentOutstanding: { increment: data.amount },
-            availableCredit: { decrement: data.amount },
-          },
-        })
-      }
-
-      await tx.expense.update({
-        where: { id: expenseId },
-        data: {
-          amount: data.amount,
-          expenseDate: data.expenseDate,
-          category: data.category,
-          subcategory: data.subcategory,
-          description: data.description,
-          paymentMethod: data.paymentMethod,
-          bankAccountId: data.paymentMethod === "BANK_TRANSFER" ? data.bankAccountId : null,
-          creditCardId: data.paymentMethod === "CREDIT_CARD" ? data.creditCardId : null,
-          isRecurring: data.isRecurring || false,
-          frequency: data.isRecurring ? data.frequency : null,
-          isBusinessExpense: data.isBusinessExpense || false,
-          isTaxDeductible: data.isTaxDeductible || false,
-          taxSection: data.taxSection,
-          notes: data.notes,
-        },
-      })
-    })
-
+    await updateExpenseService(session.user.id, expenseId, parsed.data)
     revalidatePath("/dashboard/expenses")
     revalidatePath("/dashboard/accounts")
     revalidatePath("/dashboard")
     return { success: "Expense updated successfully" }
   } catch (error) {
-    console.error("Update expense error:", error)
-    const msg = error instanceof Error ? error.message : ""
-    return { error: msg === "Expense not found" ? msg : "Failed to update expense" }
+    return toErrorState(error, "Failed to update expense")
   }
 }

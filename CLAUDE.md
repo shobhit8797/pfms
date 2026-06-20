@@ -59,13 +59,20 @@ prisma db push           # Push schema without a migration (dev only)
 - **Forms**: React Hook Form + Zod
 
 ### Two coexisting subsystems
-1. **Legacy features** (accounts, credit cards, income, expenses, investments, budgets,
-   subscriptions, tax): logic lives directly in **Server Actions** (`app/actions/*.ts`).
-2. **50:30:20 budgeting tracker** (`/dashboard/budget`, `app/api/v1/**`): a **shared service
-   layer** (`lib/services/*` — plain `(userId, input)` functions throwing typed `ServiceError`s
-   from `lib/errors.ts`) consumed by **two adapters**: Server Actions (`app/actions/budget/*`)
-   for the web UI and **REST handlers** (`app/api/v1/**`, auth via `lib/api-auth.ts`) for iOS.
-   Details: `.agent/docs/features/budget-5030-20.md`.
+1. **Legacy features** (accounts, credit cards, investments, budgets, subscriptions, tax): logic
+   lives directly in **Server Actions** (`app/actions/*.ts`). **Exception: Expense and Income** were
+   migrated to the service-layer pattern (below) so the mobile app can reuse them — their actions
+   now wrap `lib/services/{expense,income}.service.ts`.
+2. **Service-layer features** — the **50:30:20 budgeting tracker** (`/dashboard/budget`) **plus
+   Expense/Income**: a **shared service layer** (`lib/services/*` — plain `(userId, input)`
+   functions throwing typed `ServiceError`s from `lib/errors.ts`) consumed by **two adapters**:
+   Server Actions (`app/actions/budget/*`, `app/actions/{expense,income}.ts`) for the web UI and
+   **REST handlers** (`app/api/v1/**`, auth via `lib/api-auth.ts`) for native clients.
+   Details: `.agent/docs/features/budget-5030-20.md`, `.agent/docs/features/mobile.md`.
+3. **Mobile app** (`mobile/`, Expo iOS+Android) + **`packages/shared`** (`@pfms/shared`): a Bun
+   workspace holding isomorphic Zod schemas, enum mirrors, DTO types, and the typed REST client,
+   shared by the web routes and the app. `mobile/` is intentionally outside the workspace install.
+   Details: `.agent/docs/features/mobile.md`.
 
 ### Core patterns
 
@@ -148,11 +155,14 @@ Before implementing a feature or architectural change:
   TaxProfile, TaxDeduction**.
 - 50:30:20: **BudgetProfile, Category, PaymentMode, Transaction, Receipt, StatementImport,
   StagedTransaction, ApiToken** (see budget doc).
+- Message capture: **InboundMessage, MerchantPreference, GmailConnection** (mobile
+  SMS+email→expense pipeline; see `.agent/docs/features/message-capture.md`).
 
 ### Enums
 `AccountType`(SAVINGS|CURRENT|SALARY|OVERDRAFT) · `IncomeType` · `PaymentMethod`(CASH|
 BANK_TRANSFER|CREDIT_CARD|UPI|OTHER) · `Frequency`(DAILY|WEEKLY|MONTHLY|QUARTERLY|YEARLY) ·
-`BudgetPeriod` · `TaxRegime`(OLD|NEW) · plus 50:30:20 enums (`CategoryType`, `ImportStatus`, …).
+`BudgetPeriod` · `TaxRegime`(OLD|NEW) · plus 50:30:20 enums (`CategoryType`, `ImportStatus`, …) ·
+message-capture enums (`MessageSource`, `InboundMessageStatus`, `TxnDirection`).
 
 ### Form validation
 React Hook Form + `zodResolver`; shared budget schemas in `lib/validation/budget.ts`.
@@ -169,12 +179,30 @@ React Hook Form + `zodResolver`; shared budget schemas in `lib/validation/budget
 - **OpenRouter** (`lib/llm/openrouter.ts` + `extraction.ts`) for the 50:30:20 statement import:
   structured JSON output, validate-retry-once-then-FAIL. Env: `OPENROUTER_API_KEY`,
   `OPENROUTER_MODEL`, `OPENROUTER_VISION_MODEL`.
+- **Transaction message parsing** (`lib/llm/message.ts`) for the **mobile message-capture**
+  feature: text-only extraction of amount/merchant/date/method/direction from a bank/UPI
+  **SMS or transaction email**. Config-driven via `llmConfig.messageParse` (OpenRouter
+  default; Gemini supported), strict-JSON/retry-once. Feeds `POST /api/v1/messages` → review
+  queue. Emails come from a **connected Gmail account** (OAuth, background cron sync —
+  `lib/google/*`, `lib/services/gmail.service.ts`); SMS comes via an iOS Shortcut. SMS+email
+  for the same payment are deduped to a single expense (transaction fingerprint). See
+  `.agent/docs/features/message-capture.md`.
+- **Receipt scanning** (`lib/llm/receipt.ts`) for **mobile**: `POST /api/v1/expenses/scan`
+  takes a base64 image/PDF data URL and returns expense fields to pre-fill the form
+  (persists nothing). **Provider + model are config-driven** — edit `lib/llm/config.ts`
+  (`llmConfig.receiptScan`) to switch between `openrouter` (default; PDFs via the
+  `file-parser` plugin) and the direct `gemini` SDK. Same strict-JSON/retry-once pattern
+  either way. Env overrides: `RECEIPT_SCAN_PROVIDER`, `RECEIPT_SCAN_OPENROUTER_MODEL`
+  (or legacy `OPENROUTER_RECEIPT_MODEL`), `RECEIPT_SCAN_GEMINI_MODEL`.
 - All AI keys are **server-side only**. Never expose them to the client.
 
 ### File upload & statement parsing
 - Formats: CSV/XLSX (Papaparse/SheetJS, deterministic) and PDF (`pdf-parse` → text → AI).
 - Receipts/imports upload **client-side to Vercel Blob** via `app/api/v1/blob/upload` (files
   never traverse a Server Action body); 10MB limit; process in-memory; never store passwords.
+- **Mobile** has no browser upload primitive, so it streams receipts as raw binary through
+  `app/api/v1/blob/receipt` (`lib/blob.ts` `putReceipt`); the URL is saved on
+  `Expense.receiptUrl`/`receiptName` and the service cleans up the Blob on delete/replace.
 - `pdf-parse`/`pdfjs-dist` are in `serverExternalPackages` (next.config.ts) — see gotchas.
 
 ## Common patterns
@@ -229,9 +257,22 @@ OpenRouter/Vercel Blob/`main`). To prevent recurrence:
 - `NEXTAUTH_SECRET`, `NEXTAUTH_URL`
 - `GEMINI_API_KEY` (read by code) / `GOOGLE_GEMINI_API_KEY` (legacy name) — Gemini
 - `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_VISION_MODEL` — OpenRouter
+- Receipt scan (config: `lib/llm/config.ts`) — `RECEIPT_SCAN_PROVIDER` (`openrouter`|`gemini`),
+  `RECEIPT_SCAN_OPENROUTER_MODEL` (legacy: `OPENROUTER_RECEIPT_MODEL`),
+  `RECEIPT_SCAN_GEMINI_MODEL` (uses `GEMINI_API_KEY`)
+- Message parse (config: `lib/llm/config.ts`) — `MESSAGE_PARSE_PROVIDER` (`openrouter`|`gemini`),
+  `MESSAGE_PARSE_OPENROUTER_MODEL`, `MESSAGE_PARSE_GEMINI_MODEL`
+- ⚠️ The direct **Gemini** SDK default is `gemini-flash-latest` — `gemini-1.5-flash` is retired
+  and returns HTTP 404 from the API. Use a current model id if overriding.
 - `BLOB_READ_WRITE_TOKEN` — Vercel Blob
-- `EXTRACT_WORKER_SECRET`, `CRON_SECRET` — async extraction worker + cron sweep
-- `ENCRYPTION_KEY` — for encrypting sensitive fields
+- `EXTRACT_WORKER_SECRET`, `CRON_SECRET` — async extraction worker + cron sweeps (incl. Gmail sync)
+- `ENCRYPTION_KEY` — encrypts sensitive fields at rest (e.g. Gmail OAuth tokens, `lib/crypto.ts`)
+- **Gmail auto-capture** (mobile email→expense; see message-capture doc) — `GOOGLE_CLIENT_ID`,
+  `GOOGLE_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI` (must equal an Authorized redirect URI on the
+  OAuth client, e.g. `https://<host>/api/v1/google/callback`), `APP_OAUTH_RETURN_URL`
+  (deep link back to the app, default `pfms://gmail-connected`), optional `GMAIL_SYNC_QUERY`.
+  ⚠️ `gmail.readonly` is a Google **restricted scope** — Testing mode works for a few users
+  (refresh tokens expire ~weekly); public launch needs Google's CASA security assessment.
 - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` — Supabase client/REST
 
 ## Security

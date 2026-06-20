@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { getExpenses } from "@/app/actions/expense"
 import { getBankAccounts } from "@/app/actions/bank-account"
 import { getCreditCards } from "@/app/actions/credit-card"
+import { getDebitCards } from "@/app/actions/debit-card"
 import { AddExpenseDialog } from "@/components/expenses/add-expense-dialog"
 import { DeleteEntryButton } from "@/components/shared/delete-entry-button"
 import { EditExpenseDialog } from "@/components/expenses/edit-expense-dialog"
@@ -25,16 +26,18 @@ export default async function ExpensesPage() {
   const session = await auth()
   if (!session) redirect("/login")
 
-  const [expensesRaw, bankAccountsRaw, creditCardsRaw] = await Promise.all([
+  const [expensesRaw, bankAccountsRaw, creditCardsRaw, debitCardsRaw] = await Promise.all([
     getExpenses(),
     getBankAccounts(),
     getCreditCards(),
+    getDebitCards(),
   ])
 
   // Serialize Decimal fields for Client Components
   const expenses = serializeDecimals(expensesRaw)
   const bankAccounts = serializeDecimals(bankAccountsRaw)
   const creditCards = serializeDecimals(creditCardsRaw)
+  const debitCards = serializeDecimals(debitCardsRaw)
 
   const totalExpenses = expenses.reduce((acc, exp) => acc + Number(exp.amount), 0)
   const thisMonthExpenses = expenses
@@ -66,7 +69,7 @@ export default async function ExpensesPage() {
               </a>
             </Button>
           )}
-          <AddExpenseDialog bankAccounts={bankAccounts} creditCards={creditCards} />
+          <AddExpenseDialog bankAccounts={bankAccounts} creditCards={creditCards} debitCards={debitCards} />
         </div>
       </div>
 
@@ -121,10 +124,10 @@ export default async function ExpensesPage() {
           </CardHeader>
           <CardContent>
             <p className="font-heading text-3xl font-semibold">
-              {bankAccounts.length + creditCards.length}
+              {bankAccounts.length + creditCards.length + debitCards.length}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              {bankAccounts.length} accounts · {creditCards.length} cards
+              {bankAccounts.length} accounts · {creditCards.length + debitCards.length} cards
             </p>
           </CardContent>
         </Card>
@@ -182,6 +185,7 @@ export default async function ExpensesPage() {
                       {expense.paymentMethod.replace("_", " ")}
                       {expense.bankAccount && ` · ${expense.bankAccount.bankName}`}
                       {expense.creditCard && ` · ${expense.creditCard.cardName}`}
+                      {expense.debitCard && ` · ${expense.debitCard.cardName}`}
                     </TableCell>
                     <TableCell className="text-right">
                       <span className="font-mono font-semibold text-destructive">
@@ -200,6 +204,7 @@ export default async function ExpensesPage() {
                             paymentMethod: expense.paymentMethod,
                             bankAccountId: expense.bankAccountId,
                             creditCardId: expense.creditCardId,
+                            debitCardId: expense.debitCardId,
                             isRecurring: expense.isRecurring,
                             frequency: expense.frequency,
                             isTaxDeductible: expense.isTaxDeductible,
@@ -208,6 +213,7 @@ export default async function ExpensesPage() {
                           }}
                           bankAccounts={bankAccounts}
                           creditCards={creditCards}
+                          debitCards={debitCards}
                         />
                         <DeleteEntryButton
                           id={expense.id}

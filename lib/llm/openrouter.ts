@@ -15,6 +15,7 @@ export type ChatMessage = {
     | Array<
         | { type: "text"; text: string }
         | { type: "image_url"; image_url: { url: string } }
+        | { type: "file"; file: { filename: string; file_data: string } }
       >
 }
 
@@ -44,6 +45,8 @@ export async function chatJson(opts: {
   schemaName: string
   schema: Record<string, unknown>
   temperature?: number
+  /** OpenRouter plugins (e.g. the file-parser for PDF inputs). */
+  plugins?: Record<string, unknown>[]
 }): Promise<ChatJsonResult> {
   const apiKey = process.env.OPENROUTER_API_KEY
   if (!apiKey) throw new OpenRouterError("OPENROUTER_API_KEY is not configured")
@@ -60,6 +63,7 @@ export async function chatJson(opts: {
       model: opts.model,
       temperature: opts.temperature ?? 0,
       messages: opts.messages,
+      ...(opts.plugins ? { plugins: opts.plugins } : {}),
       response_format: {
         type: "json_schema",
         json_schema: {

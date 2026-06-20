@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "PFMS",
+    "slug": "pfms-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "pfms",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.pfms.mobile"
+    },
+    "android": {
+      "package": "com.pfms.mobile"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "PFMS uses your photos so you can attach a receipt to an expense.",
+          "cameraPermission": "PFMS uses the camera so you can snap a photo of a receipt."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "apiBaseUrl": "http://localhost:3000"
+    }
+  }
+}

@@ -7,6 +7,10 @@ const nextConfig: NextConfig = {
   // './pdf.worker.mjs'"). Externalizing makes them require() from node_modules
   // at runtime, where the sibling worker file resolves correctly.
   serverExternalPackages: ["pdf-parse", "pdfjs-dist"],
+  // The @pfms/shared workspace ships TypeScript source (isomorphic Zod schemas,
+  // enums, API client) consumed by both the web app and the Expo mobile app.
+  // Next must transpile it since it lives outside node_modules.
+  transpilePackages: ["@pfms/shared"],
 };
 
 export default nextConfig;

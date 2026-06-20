@@ -45,6 +45,7 @@ export type EditableExpense = {
   paymentMethod: string
   bankAccountId: string | null
   creditCardId: string | null
+  debitCardId: string | null
   isRecurring: boolean
   frequency: string | null
   isTaxDeductible: boolean
@@ -56,9 +57,10 @@ interface Props {
   expense: EditableExpense
   bankAccounts: AccountLite[]
   creditCards: CardLite[]
+  debitCards?: CardLite[]
 }
 
-export function EditExpenseDialog({ expense, bankAccounts, creditCards = [] }: Props) {
+export function EditExpenseDialog({ expense, bankAccounts, creditCards = [], debitCards = [] }: Props) {
   const [open, setOpen] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<string>(expense.paymentMethod)
   const [isRecurring, setIsRecurring] = useState(expense.isRecurring)
@@ -138,6 +140,7 @@ export function EditExpenseDialog({ expense, bankAccounts, creditCards = [] }: P
                   <SelectItem value="UPI">UPI</SelectItem>
                   <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
                   <SelectItem value="CREDIT_CARD">Credit Card</SelectItem>
+                  <SelectItem value="DEBIT_CARD">Debit Card</SelectItem>
                   <SelectItem value="OTHER">Other</SelectItem>
                 </SelectContent>
               </Select>
@@ -172,7 +175,25 @@ export function EditExpenseDialog({ expense, bankAccounts, creditCards = [] }: P
                 <SelectContent>
                   {creditCards.map((card) => (
                     <SelectItem key={card.id} value={card.id}>
-                      {card.cardName} - {card.lastFourDigits}
+                      {card.cardName} — ····{card.lastFourDigits}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {paymentMethod === "DEBIT_CARD" && (
+            <div className="grid gap-2">
+              <Label htmlFor="debitCardId">Debit Card</Label>
+              <Select name="debitCardId" defaultValue={expense.debitCardId || undefined} required>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select debit card" />
+                </SelectTrigger>
+                <SelectContent>
+                  {debitCards.map((card) => (
+                    <SelectItem key={card.id} value={card.id}>
+                      {card.cardName} — ····{card.lastFourDigits}
                     </SelectItem>
                   ))}
                 </SelectContent>

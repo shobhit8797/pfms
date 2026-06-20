@@ -24,7 +24,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
 import { createExpense } from "@/app/actions/expense"
-import { BankAccount, CreditCard, PaymentMethod } from "@prisma/client"
+import { BankAccount, CreditCard, DebitCard } from "@prisma/client"
 import { toast } from "sonner"
 import { Plus } from "lucide-react"
 
@@ -49,10 +49,11 @@ const EXPENSE_CATEGORIES = [
 
 type Props = {
   bankAccounts: BankAccount[]
-  creditCards: CreditCard[] // We might not have this type available yet if I haven't imported it, but it exists in Prisma
+  creditCards: CreditCard[]
+  debitCards?: DebitCard[]
 }
 
-export function AddExpenseDialog({ bankAccounts, creditCards = [] }: Props) {
+export function AddExpenseDialog({ bankAccounts, creditCards = [], debitCards = [] }: Props) {
   const [open, setOpen] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<string>("CASH")
   const [isRecurring, setIsRecurring] = useState(false)
@@ -150,6 +151,7 @@ export function AddExpenseDialog({ bankAccounts, creditCards = [] }: Props) {
                   <SelectItem value="UPI">UPI</SelectItem>
                   <SelectItem value="BANK_TRANSFER">Bank Transfer</SelectItem>
                   <SelectItem value="CREDIT_CARD">Credit Card</SelectItem>
+                  <SelectItem value="DEBIT_CARD">Debit Card</SelectItem>
                   <SelectItem value="OTHER">Other</SelectItem>
                 </SelectContent>
               </Select>
@@ -184,7 +186,25 @@ export function AddExpenseDialog({ bankAccounts, creditCards = [] }: Props) {
                 <SelectContent>
                   {creditCards.map((card) => (
                     <SelectItem key={card.id} value={card.id}>
-                      {card.cardName} - {card.lastFourDigits}
+                      {card.cardName} — ····{card.lastFourDigits}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {paymentMethod === "DEBIT_CARD" && (
+            <div className="grid gap-2">
+              <Label htmlFor="debitCardId">Debit Card</Label>
+              <Select name="debitCardId" required>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select debit card" />
+                </SelectTrigger>
+                <SelectContent>
+                  {debitCards.map((card) => (
+                    <SelectItem key={card.id} value={card.id}>
+                      {card.cardName} — ····{card.lastFourDigits}
                     </SelectItem>
                   ))}
                 </SelectContent>

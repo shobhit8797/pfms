@@ -27,6 +27,7 @@ model User {
   subscriptions        Subscription[]
   budgets              Budget[]
   creditCards          CreditCard[]
+  debitCards           DebitCard[]
   taxDeductions        TaxDeduction[]
   taxProfile           TaxProfile?
   // Phase 2+ Bank Account relations
@@ -45,6 +46,10 @@ model User {
   statementImports     StatementImport[]
   stagedTransactions   StagedTransaction[]
   apiTokens            ApiToken[]
+  upiHandles           UpiHandle[]
+  inboundMessages      InboundMessage[]
+  merchantPreferences  MerchantPreference[]
+  gmailConnection      GmailConnection?
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -160,6 +165,7 @@ model BankAccount {
   expenses         Expense[]
   transfersFrom    TransferTransaction[]   @relation("FromAccount")
   transfersTo      TransferTransaction[]   @relation("ToAccount")
+  debitCards       DebitCard[]
   statementUploads StatementUpload[]
   reconciliations  ReconciliationRecord[]
   balanceHistory   BalanceSnapshot[]
@@ -373,12 +379,14 @@ model Income {
 
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   bankAccount BankAccount? @relation(fields: [bankAccountId], references: [id])
+  inboundMessages InboundMessage[]
 }
 
 enum PaymentMethod {
   CASH
   BANK_TRANSFER
   CREDIT_CARD
+  DEBIT_CARD
   UPI
   OTHER
 }
@@ -394,9 +402,12 @@ model Expense {
   paymentMethod     PaymentMethod
   bankAccountId     String?
   creditCardId      String?
+  debitCardId       String?
   isRecurring       Boolean       @default(false)
   frequency         Frequency?
   invoiceUrl        String?
+  receiptUrl        String?       // Vercel Blob URL of an attached receipt (image/PDF)
+  receiptName       String?       // original file name of the attached receipt
   isBusinessExpense Boolean       @default(false)
   isTaxDeductible   Boolean       @default(false)
   taxSection        String?       // e.g. "80C", "80D"
@@ -407,8 +418,10 @@ model Expense {
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   bankAccount   BankAccount?   @relation(fields: [bankAccountId], references: [id])
   creditCard    CreditCard?    @relation(fields: [creditCardId], references: [id])
+  debitCard     DebitCard?     @relation(fields: [debitCardId], references: [id])
   splits        ExpenseSplit[]
   taxDeductions TaxDeduction[]
+  inboundMessages InboundMessage[]
 }
 
 model ExpenseSplit {
@@ -465,6 +478,26 @@ model Budget {
   updatedAt      DateTime     @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model DebitCard {
+  id             String   @id @default(cuid())
+  userId         String
+  cardName       String
+  bankName       String
+  lastFourDigits String
+  cardNetwork    String?  // VISA, Mastercard, RuPay, Maestro
+  bankAccountId  String?
+  isActive       Boolean  @default(true)
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bankAccount BankAccount? @relation(fields: [bankAccountId], references: [id])
+  expenses    Expense[]
+
+  @@index([userId, isActive])
 }
 
 model CreditCard {
@@ -745,6 +778,160 @@ model StagedTransaction {
 
   @@index([importBatchId, reviewStatus])
   @@index([userId, updatedAt])
+}
+
+// Saved UPI payment handles for quick selection in expense forms.
+model UpiHandle {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String   // display name, e.g. "GPay", "PhonePe"
+  handle    String   // UPI VPA, e.g. "user@ybl"
+  isDefault Boolean  @default(false)
+  isActive  Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+}
+
+// ---------------------------------------------------------------------------
+// Message capture — turn bank/UPI transaction SMS into reviewed expenses.
+// Source-agnostic: an iOS Shortcut automation, an Android SMS reader, a share
+// sheet, or a manual paste all POST raw message text to the same ingest path.
+// ---------------------------------------------------------------------------
+
+// Where a captured message came from.
+enum MessageSource {
+  IOS_SHORTCUT // iOS Shortcuts "Message" automation → POST /api/v1/messages
+  ANDROID_SMS //  Android READ_SMS auto-reader (future)
+  SHARE //         iOS share sheet / paste from Messages
+  MANUAL //        typed/pasted in-app
+  EMAIL //         a transaction email (forwarded / pasted / attached .eml)
+}
+
+// Lifecycle of a captured message in the review queue.
+enum InboundMessageStatus {
+  PENDING_REVIEW // parsed as a transaction, awaiting the user's swipe
+  DONE //           user saved an expense/income from it
+  DISMISSED //      user swiped it away without saving (still won't reappear)
+  IGNORED //        not a transaction (OTP, promo, balance enquiry) — auto-hidden
+  FAILED //         parsing errored; kept for debugging, hidden from the queue
+  DUPLICATE //      same transaction already captured via another source (SMS↔email) — suppressed
+}
+
+// A raw message captured from a device, parsed into a candidate transaction.
+// `metadata` retains the full original message info as requested.
+model InboundMessage {
+  id        String        @id @default(cuid())
+  userId    String
+  source    MessageSource @default(IOS_SHORTCUT)
+  rawText   String        @db.Text
+  sender    String? //      bank/UPI sender id, e.g. "VM-HDFCBK"
+  receivedAt DateTime     @default(now()) // when the SMS arrived on the device
+
+  // Dedupe identical captures (shortcut double-fires, re-paste). sha256 of
+  // userId + normalized text + receivedAt-day. Unique so re-ingest is a no-op.
+  dedupeHash String       @unique
+
+  status     InboundMessageStatus @default(PENDING_REVIEW)
+
+  // Parsed candidate fields (nullable — the user reviews/edits before saving).
+  parsedAmount        Decimal?
+  parsedMerchant      String?
+  parsedDate          DateTime?
+  parsedPaymentMethod PaymentMethod?
+  parsedDirection     TxnDirection?
+  parsedAccountHint   String? //        masked tail, e.g. "XX1234"
+  confidence          Decimal? //       0..1 model confidence
+  parseError          String?        @db.Text
+
+  // Category to pre-fill the review card: learned merchant preference if known,
+  // else the model's guess. The user can override it (which updates the pref).
+  suggestedCategory String?
+
+  // Whether to prompt for a receipt — seeded from the merchant preference at
+  // ingest, so the queue card already knows to hide the prompt for opt-outs.
+  askReceipt Boolean @default(true)
+
+  // Cross-source dedupe: a stable fingerprint of the *transaction* (amount +
+  // merchant + direction), independent of the raw text. An SMS and an email for
+  // the same payment share this, so the second capture is marked DUPLICATE and
+  // never produces a second expense. `duplicateOfId` points at the canonical row.
+  txnFingerprint String?
+  duplicateOfId  String?
+
+  // The expense/income created from this message (if the user saved it).
+  expenseId String?
+  incomeId  String?
+
+  metadata Json? // full message info: original sender, model used, tokens, etc.
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expense Expense? @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+  income  Income?  @relation(fields: [incomeId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status, receivedAt])
+  @@index([userId, txnFingerprint])
+}
+
+// Per-merchant learned behavior. Drives auto-classification (category /
+// payment method) and the "stop asking for a receipt" preference.
+model MerchantPreference {
+  id          String  @id @default(cuid())
+  userId      String
+  merchantKey String //                normalized merchant name (lowercased)
+  displayName String //                last-seen human-readable merchant name
+
+  category      String? //             learned spend category to auto-apply
+  paymentMethod PaymentMethod? //      learned payment method
+  askReceipt    Boolean        @default(true) // false once the user declines
+
+  timesSeen    Int      @default(0)
+  declineCount Int      @default(0)
+  lastSeenAt   DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, merchantKey])
+  @@index([userId])
+}
+
+// A user's connected Google account, authorizing the backend to read their
+// Gmail for transaction emails. OAuth tokens are encrypted at rest (lib/crypto).
+// One connection per user. A background cron sweep (gmail-sweep) polls each.
+enum GmailConnectionStatus {
+  CONNECTED // tokens valid; syncing
+  REVOKED //  user/Google revoked access; needs reconnect
+  ERROR //    repeated sync/refresh failure; needs attention
+}
+
+model GmailConnection {
+  id              String                @id @default(cuid())
+  userId          String                @unique
+  email           String //              the connected Gmail address
+  accessTokenEnc  String                @db.Text
+  refreshTokenEnc String                @db.Text
+  expiresAt       DateTime //            access-token expiry
+  syncQuery       String? //             Gmail search query (overrides the env default)
+  lastSyncedAt    DateTime? //           watermark; only fetch mail after this
+  status          GmailConnectionStatus @default(CONNECTED)
+  lastError       String?               @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, lastSyncedAt])
 }
 
 // Long-lived bearer tokens for native (iOS) clients hitting the REST API.

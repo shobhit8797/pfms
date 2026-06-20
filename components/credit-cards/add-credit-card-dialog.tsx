@@ -19,12 +19,22 @@ import { toast } from "sonner"
 
 export function AddCreditCardDialog() {
   const [open, setOpen] = useState(false)
+  // Controlled card number for Apple AutoFill — stores the last 4 digits
+  const [lastFour, setLastFour] = useState("")
+
+  // Accepts full card number (AutoFill) or just 4 digits; keeps last 4
+  const handleCardNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const digits = e.target.value.replace(/\D/g, "")
+    setLastFour(digits.length > 4 ? digits.slice(-4) : digits)
+  }
+
   const [, formAction, isPending] = useActionState(
     async (prev: unknown, formData: FormData) => {
       const result = await createCreditCard(prev as undefined, formData)
       if (result.success) {
         toast.success(result.success)
         setOpen(false)
+        setLastFour("")
       } else if (result.error) {
         toast.error(result.error)
       }
@@ -73,20 +83,27 @@ export function AddCreditCardDialog() {
               required
             />
           </div>
+          {/* Card number with Apple AutoFill support */}
           <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="lastFourDigits" className="text-right">
-              Last 4
+            <Label htmlFor="cardNumberInput" className="text-right text-sm leading-tight">
+              Card Number
             </Label>
-            <Input
-              id="lastFourDigits"
-              name="lastFourDigits"
-              inputMode="numeric"
-              maxLength={4}
-              placeholder="1234"
-              className="col-span-3"
-              required
-            />
+            <div className="col-span-3 space-y-1">
+              <Input
+                id="cardNumberInput"
+                value={lastFour}
+                onChange={handleCardNumberChange}
+                inputMode="numeric"
+                autoComplete="cc-number"
+                placeholder="Last 4 digits or full number"
+                maxLength={19}
+              />
+              <p className="text-xs text-muted-foreground">
+                iOS AutoFill works here — only the last 4 digits are saved.
+              </p>
+            </div>
           </div>
+          <input type="hidden" name="lastFourDigits" value={lastFour} />
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="creditLimit" className="text-right">
               Limit
@@ -176,7 +193,7 @@ export function AddCreditCardDialog() {
             />
           </div>
           <DialogFooter>
-            <Button type="submit" disabled={isPending}>
+            <Button type="submit" disabled={isPending || lastFour.length !== 4}>
               {isPending ? "Adding..." : "Add Card"}
             </Button>
           </DialogFooter>

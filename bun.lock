@@ -8,6 +8,7 @@
         "@auth/prisma-adapter": "^2.11.1",
         "@google/generative-ai": "^0.24.1",
         "@hookform/resolvers": "^5.2.2",
+        "@pfms/shared": "workspace:*",
         "@prisma/adapter-pg": "^7.2.0",
         "@prisma/client": "latest",
         "@radix-ui/react-avatar": "^1.1.11",
@@ -60,6 +61,13 @@
         "prisma": "latest",
         "tailwindcss": "^4",
         "typescript": "^5",
+      },
+    },
+    "packages/shared": {
+      "name": "@pfms/shared",
+      "version": "0.1.0",
+      "dependencies": {
+        "zod": "^4.2.1",
       },
     },
   },
@@ -279,6 +287,8 @@
     "@nolyfill/is-core-module": ["@nolyfill/is-core-module@1.0.39", "", {}, ""],
 
     "@panva/hkdf": ["@panva/hkdf@1.2.1", "", {}, ""],
+
+    "@pfms/shared": ["@pfms/shared@workspace:packages/shared"],
 
     "@prisma/adapter-pg": ["@prisma/adapter-pg@7.2.0", "", { "dependencies": { "@prisma/driver-adapter-utils": "7.2.0", "pg": "^8.16.3", "postgres-array": "3.0.4" } }, "sha512-euIdQ13cRB2wZ3jPsnDnFhINquo1PYFPCg6yVL8b2rp3EdinQHsX9EDdCtRr489D5uhphcRk463OdQAFlsCr0w=="],
 

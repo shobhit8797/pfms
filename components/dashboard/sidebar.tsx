@@ -2,20 +2,21 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { 
-  LayoutDashboard, 
-  Wallet, 
-  TrendingUp, 
-  CreditCard, 
-  PieChart, 
-  ReceiptIndianRupee, 
+import {
+  LayoutDashboard,
+  Wallet,
+  TrendingUp,
+  CreditCard,
+  PieChart,
+  ReceiptIndianRupee,
   Sparkles,
   LogOut,
   Landmark,
   PiggyBank,
   WalletCards,
   LineChart,
-  Search
+  Search,
+  CircleDollarSign
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -35,6 +36,7 @@ const navItems = [
   { href: "/dashboard/insights", label: "Insights", icon: LineChart },
   { href: "/dashboard/accounts", label: "Accounts", icon: Landmark },
   { href: "/dashboard/credit-cards", label: "Credit Cards", icon: WalletCards },
+  { href: "/dashboard/debit-cards", label: "Debit Cards", icon: CircleDollarSign },
   { href: "/dashboard/income", label: "Income", icon: Wallet },
   { href: "/dashboard/expenses", label: "Expenses", icon: CreditCard },
   { href: "/dashboard/budget", label: "50:30:20", icon: PiggyBank },

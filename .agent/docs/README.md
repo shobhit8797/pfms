@@ -24,13 +24,20 @@ implementing features or architectural changes (see `/AGENTS.md` → "Documentat
 | `features/tax-planning.md` | Indian tax planning (Old/New regime) |
 | `features/authentication.md` | Auth (NextAuth v5, JWT, credentials) |
 | `features/ai-assistant.md` | Gemini-powered assistant + statement parsing |
+| `features/mobile.md` | Expo iOS/Android app, `@pfms/shared`, expense/income REST surface |
+| `features/message-capture.md` | SMS/UPI message → parse → review queue → learned auto-classification |
 
 ## Two subsystems (read this before assuming a pattern)
 
 - **Legacy features** keep business logic directly inside Server Actions (`app/actions/*.ts`).
+  *Exception:* **Expense and Income** were migrated to the service-layer pattern below (so the
+  mobile app can reuse them) — see `features/mobile.md`. Other legacy features still hold logic
+  in their actions.
 - **50:30:20 tracker** uses a shared service layer (`lib/services/*`) consumed by both Server
   Actions (`app/actions/budget/*`) and REST handlers (`app/api/v1/**`). Mirror the subsystem the
   feature you are touching belongs to.
+- **Mobile** (`mobile/`, Expo) consumes the REST API via `@pfms/shared` (`packages/shared`). See
+  `features/mobile.md`.
 
 ## Keeping docs current
 
