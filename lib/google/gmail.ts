@@ -92,6 +92,26 @@ export async function listMessageIds(accessToken: string, query: string, max = 2
   return (data.messages ?? []).map((m) => m.id)
 }
 
+/**
+ * One page of message ids for a query, with the token for the next page (when
+ * Gmail has more results). Used to walk *all* matches during a backfill, where
+ * the single-page `listMessageIds` cap would otherwise hide older mail.
+ */
+export async function listMessageIdsPage(
+  accessToken: string,
+  query: string,
+  max = 100,
+  pageToken?: string
+): Promise<{ ids: string[]; nextPageToken?: string }> {
+  const q = new URLSearchParams({ q: query, maxResults: String(max) })
+  if (pageToken) q.set("pageToken", pageToken)
+  const data = await gmailFetch<{ messages?: { id: string }[]; nextPageToken?: string }>(
+    accessToken,
+    `/messages?${q.toString()}`
+  )
+  return { ids: (data.messages ?? []).map((m) => m.id), nextPageToken: data.nextPageToken }
+}
+
 /** Fetches one message and parses out the headers + readable body. */
 export async function getParsedMessage(accessToken: string, id: string): Promise<ParsedEmail> {
   const m = await gmailFetch<GmailMessage>(accessToken, `/messages/${id}?format=full`)

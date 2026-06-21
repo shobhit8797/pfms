@@ -1,7 +1,8 @@
-import { useState } from "react"
-import { ScrollView, Text, TouchableOpacity, View } from "react-native"
+import { useCallback, useState } from "react"
+import { RefreshControl, ScrollView, Text, TouchableOpacity, View } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { Link } from "expo-router"
+import { useQueryClient } from "@tanstack/react-query"
 import { useExpenses, useIncome, usePendingMessages } from "../../lib/hooks"
 import { useAuth } from "../../lib/auth"
 import { useThemeColors } from "../../lib/theme"
@@ -17,13 +18,29 @@ export default function HomeScreen() {
   const pending = usePendingMessages()
   const pendingCount = pending.data?.items.length ?? 0
   const [addExpense, setAddExpense] = useState(false)
+  const qc = useQueryClient()
+  const [refreshing, setRefreshing] = useState(false)
+
+  // Pull-to-refresh refetches every query in the app (expenses, income, accounts,
+  // cards, UPI, review queue, …) so all tabs reflect fresh data after a pull.
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await qc.invalidateQueries()
+    } finally {
+      setRefreshing(false)
+    }
+  }, [qc])
 
   const totalExpense = (expenses.data?.items ?? []).reduce((s, e) => s + e.amount, 0)
   const totalIncome = (income.data?.items ?? []).reduce((s, i) => s + i.amount, 0)
   const net = totalIncome - totalExpense
 
   return (
-    <ScrollView className="flex-1 bg-background p-4">
+    <ScrollView
+      className="flex-1 bg-background p-4"
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.mutedForeground} />}
+    >
       <Text className="mb-4 text-sm text-muted-foreground">
         Totals across your most recent entries (also visible on the web app).
       </Text>

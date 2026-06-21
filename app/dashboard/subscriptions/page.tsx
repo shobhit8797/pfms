@@ -1,38 +1,35 @@
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
-import { getSubscriptions, cancelSubscription } from "@/app/actions/subscription"
+import { getSubscriptions } from "@/app/actions/subscription"
 import { AddSubscriptionDialog } from "@/components/subscriptions/add-subscription-dialog"
-import { format, differenceInDays } from "date-fns"
+import { SubscriptionCard } from "@/components/subscriptions/subscription-card"
+import { differenceInDays } from "date-fns"
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { XCircle, Sparkles, Clock, CreditCard, AlertTriangle } from "lucide-react"
-import { serializeDecimals } from "@/lib/utils"
+import { Sparkles, Clock, CreditCard } from "lucide-react"
 
 export default async function SubscriptionsPage() {
   const session = await auth()
   if (!session) redirect("/login")
 
-  const subscriptionsRaw = await getSubscriptions()
+  // Returns DTOs (Decimals already serialized for Client Components).
+  const subscriptions = await getSubscriptions(true)
+  const activeSubscriptions = subscriptions.filter((s) => s.isActive)
 
-  // Serialize Decimal fields for Client Components
-  const subscriptions = serializeDecimals(subscriptionsRaw)
-
-  // Calculate monthly burn
-  const monthlyBurn = subscriptions.reduce((acc, sub) => {
+  // Calculate monthly burn (active only)
+  const monthlyBurn = activeSubscriptions.reduce((acc, sub) => {
     let monthlyAmount = Number(sub.amount)
     if (sub.billingCycle === "YEARLY") monthlyAmount /= 12
     if (sub.billingCycle === "QUARTERLY") monthlyAmount /= 3
     return acc + monthlyAmount
   }, 0)
 
-  const upcomingRenewals = subscriptions.filter(s => {
-    const days = differenceInDays(s.nextBillingDate, new Date())
+  const upcomingRenewals = activeSubscriptions.filter(s => {
+    const days = differenceInDays(new Date(s.nextBillingDate), new Date())
     return days >= 0 && days <= 7
   })
 
@@ -63,7 +60,7 @@ export default async function SubscriptionsPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <p className="font-heading text-3xl font-semibold">{subscriptions.length}</p>
+            <p className="font-heading text-3xl font-semibold">{activeSubscriptions.length}</p>
             <p className="text-xs text-muted-foreground mt-1">Active services</p>
           </CardContent>
         </Card>
@@ -117,88 +114,9 @@ export default async function SubscriptionsPage() {
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {subscriptions.map((sub, index) => {
-            const daysUntilRenewal = differenceInDays(sub.nextBillingDate, new Date())
-            const isOverdue = daysUntilRenewal < 0
-            const isRenewingSoon = daysUntilRenewal >= 0 && daysUntilRenewal <= 7
-            
-            return (
-              <Card 
-                key={sub.id} 
-                className={`bg-card border-border hover:border-border/80 transition-all opacity-0 animate-fade-in-up ${isRenewingSoon ? "border-chart-5/30" : ""}`}
-                style={{ animationDelay: `${index * 50}ms` }}
-              >
-                <CardHeader className="pb-2">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <CardTitle className="font-heading text-lg font-semibold">{sub.serviceName}</CardTitle>
-                      <Badge variant="secondary" className="mt-1 bg-muted text-muted-foreground border-0 text-xs">
-                        {sub.category}
-                      </Badge>
-                    </div>
-                    {isRenewingSoon && (
-                      <div className="flex items-center gap-1 text-chart-5 bg-chart-5/10 px-2 py-1 rounded-lg">
-                        <AlertTriangle className="w-3 h-3" />
-                        <span className="text-xs font-medium">
-                          {daysUntilRenewal === 0 ? "Today" : `${daysUntilRenewal}d`}
-                        </span>
-                      </div>
-                    )}
-                    {isOverdue && (
-                      <div className="flex items-center gap-1 text-destructive bg-destructive/10 px-2 py-1 rounded-lg">
-                        <AlertTriangle className="w-3 h-3" />
-                        <span className="text-xs font-medium">Overdue</span>
-                      </div>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="mb-4">
-                    <span className="font-heading text-3xl font-semibold">
-                      ₹{Number(sub.amount).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-                    </span>
-                    <span className="text-sm text-muted-foreground ml-1">
-                      /{sub.billingCycle.toLowerCase()}
-                    </span>
-                  </div>
-                  
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Next billing</span>
-                      <span className="font-medium">{format(sub.nextBillingDate, "MMM d, yyyy")}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Payment</span>
-                      <span className="font-medium">{sub.paymentMethod}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-muted-foreground">Status</span>
-                      <Badge 
-                        variant={sub.isActive ? "default" : "secondary"} 
-                        className={sub.isActive ? "bg-success/10 text-success border-0" : "bg-muted text-muted-foreground border-0"}
-                      >
-                        {sub.isActive ? "Active" : "Inactive"}
-                      </Badge>
-                    </div>
-                  </div>
-                  
-                  <form action={async () => {
-                    "use server"
-                    await cancelSubscription(sub.id)
-                  }}>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="w-full mt-4 text-destructive hover:text-destructive hover:bg-destructive/10"
-                    >
-                      <XCircle className="w-4 h-4 mr-2" />
-                      Cancel Subscription
-                    </Button>
-                  </form>
-                </CardContent>
-              </Card>
-            )
-          })}
+          {subscriptions.map((sub, index) => (
+            <SubscriptionCard key={sub.id} sub={sub} index={index} />
+          ))}
         </div>
       )}
     </div>

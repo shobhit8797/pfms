@@ -7,6 +7,8 @@ import { getDebitCards } from "@/app/actions/debit-card"
 import { AddExpenseDialog } from "@/components/expenses/add-expense-dialog"
 import { DeleteEntryButton } from "@/components/shared/delete-entry-button"
 import { EditExpenseDialog } from "@/components/expenses/edit-expense-dialog"
+import { RecurringSuggestionsBanner } from "@/components/shared/recurring-suggestions-banner"
+import { getRecurringSuggestions } from "@/app/actions/recurring"
 import { format } from "date-fns"
 import {
   Table,
@@ -26,12 +28,14 @@ export default async function ExpensesPage() {
   const session = await auth()
   if (!session) redirect("/login")
 
-  const [expensesRaw, bankAccountsRaw, creditCardsRaw, debitCardsRaw] = await Promise.all([
+  const [expensesRaw, bankAccountsRaw, creditCardsRaw, debitCardsRaw, suggestions] = await Promise.all([
     getExpenses(),
     getBankAccounts(),
     getCreditCards(),
     getDebitCards(),
+    getRecurringSuggestions(),
   ])
+  const expenseSuggestions = suggestions.filter((s) => s.kind === "expense")
 
   // Serialize Decimal fields for Client Components
   const expenses = serializeDecimals(expensesRaw)
@@ -50,6 +54,7 @@ export default async function ExpensesPage() {
 
   return (
     <div className="p-6 md:p-8 space-y-8">
+      {expenseSuggestions.length > 0 && <RecurringSuggestionsBanner suggestions={expenseSuggestions} />}
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>

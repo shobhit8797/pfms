@@ -120,6 +120,25 @@ email transactions land in the same review queue and dedupe against SMS.
   `lastSyncedAt`), and `syncDueConnections` for cron. Default query is
   transaction-leaning and excludes promotions/social; the LLM `isTransaction` gate
   filters the rest. First sync looks back 30 days; ≤25 messages per run.
+  - **Per-connection query override** — `GmailConnection.syncQuery` replaces the
+    `DEFAULT_QUERY` for one user (the global default is unchanged). `CURATED_QUERY`
+    (`(label:expenses) OR (category:purchases)`) drives capture off the user's
+    **Expenses** Gmail label plus Gmail's built-in **Purchases** category;
+    `CURATED_SYNC_QUERY` is that OR-ed with the keyword default. Gmail `label:`
+    takes the display name lower-cased with spaces→hyphens and has **no wildcard**,
+    so sub-labels must be OR-listed individually.
+  - **`backfillConnection(userId, query, max?)`** — one-time catch-up that pages
+    through **all** matches (read or unread, any age — no watermark/date bound),
+    without moving `lastSyncedAt`. Idempotent (ingest dedupes — the `dedupeHash`
+    check short-circuits *before* the LLM parse, so re-runs are cheap and make
+    progress). **`enableCuratedCapture(userId, max?)`** sets `syncQuery =
+    CURATED_SYNC_QUERY` then backfills `CURATED_QUERY`. Two entry points:
+    `POST /api/v1/google/backfill` (the in-app **"Import Expenses & Purchases"**
+    button — fetch-capped at 80 to fit the request window) and
+    `scripts/gmail-expenses-label.ts` (`bun run …`, unbounded for deep history).
+    ⚠️ ongoing sync applies `after:<watermark>` to every branch, so emails labeled
+    *after the fact* (older than the watermark) aren't auto-captured — re-run the
+    backfill to sweep them up.
 - **Routes**: `POST /api/v1/google/connect` (auth → `{url}`),
   `GET /api/v1/google/callback` (no auth — verifies `state`, stores tokens, returns
   an HTML page that deep-links back to `pfms://`), `GET/DELETE /api/v1/google`
@@ -127,8 +146,10 @@ email transactions land in the same review queue and dedupe against SMS.
   (`CRON_SECRET`, registered every 5 min in `vercel.json`).
 - **Mobile**: the **Auto-capture** screen (`app/setup-capture.tsx`) has a **Connect
   Gmail** card — opens consent in the system browser via `Linking`, refreshes
-  status on focus (`useFocusEffect`). Connecting/managing is here; there is no
-  manual paste UI.
+  status on focus (`useFocusEffect`). When connected it shows a **Check now** button
+  (`useSyncGmail` → `POST /api/v1/google/sync`) that runs the sync on demand and
+  reports how many new transactions were queued — the user isn't dependent on the
+  cron cadence. Connecting/managing is here; there is no manual paste UI.
 
 > ⚠️ `gmail.readonly` is a Google **restricted scope**. In "Testing" OAuth mode it
 > works for a few test users with no review, but refresh tokens expire ~weekly.
@@ -145,13 +166,15 @@ email transactions land in the same review queue and dedupe against SMS.
 | `app/api/v1/google/connect/route.ts` | `POST` | → `{url}` Google consent URL (signed state) |
 | `app/api/v1/google/callback/route.ts` | `GET` | OAuth callback (no auth; verifies state) → stores tokens → HTML deep-link back |
 | `app/api/v1/google/route.ts` | `GET`, `DELETE` | Gmail status / disconnect |
+| `app/api/v1/google/sync/route.ts` | `POST` | **on-demand sync** for the signed-in user → `syncConnection` (manual equivalent of the cron); powers the app's "Check now" button |
+| `app/api/v1/google/backfill/route.ts` | `POST` | **enable curated capture** → `enableCuratedCapture` (Expenses label + Purchases category, then backfill existing); powers the "Import Expenses & Purchases" button |
 | `app/api/v1/internal/gmail-sweep/route.ts` | `GET` | cron (`CRON_SECRET`) → `syncDueConnections` |
 
 Shared schemas/DTOs/client: `packages/shared/src/validation/message.ts`
 (`messageIngestSchema`, `messageResolveSchema`), `types.ts` (`InboundMessageDTO`,
 `MerchantPreferenceDTO`, `IngestMessageDTO`, `IssuedTokenDTO`, `GmailStatusDTO`),
 `api-client.ts` (`ingestMessage`, `listMessages`, `resolveMessage`, `issueToken`,
-`connectGoogle`, `gmailStatus`, `disconnectGoogle`).
+`connectGoogle`, `gmailStatus`, `syncGmail`, `backfillGmail`, `disconnectGoogle`).
 
 ## Mobile (`mobile/`)
 

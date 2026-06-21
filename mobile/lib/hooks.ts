@@ -1,11 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type {
   ExpenseInput,
+  ExpenseUpdateInput,
   IncomeInput,
+  IncomeUpdateInput,
   CardCreateInput,
   UpiHandleCreateInput,
   MessageIngestInput,
   MessageResolveInput,
+  SubscriptionInput,
+  SubscriptionUpdateInput,
+  SubscriptionPaymentInput,
 } from "@pfms/shared"
 import { useAuth } from "./auth"
 
@@ -52,6 +57,20 @@ export function useScanReceipt() {
   })
 }
 
+export function useUpdateExpense() {
+  const { client } = useAuth()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: ExpenseUpdateInput }) => client.updateExpense(id, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["expenses"] })
+      qc.invalidateQueries({ queryKey: ["accounts"] })
+      qc.invalidateQueries({ queryKey: ["cards"] })
+      qc.invalidateQueries({ queryKey: ["recurring-suggestions"] })
+    },
+  })
+}
+
 export function useDeleteExpense() {
   const { client } = useAuth()
   const qc = useQueryClient()
@@ -62,6 +81,15 @@ export function useDeleteExpense() {
       qc.invalidateQueries({ queryKey: ["accounts"] })
       qc.invalidateQueries({ queryKey: ["cards"] })
     },
+  })
+}
+
+/** Detected month-on-month repeats not yet flagged recurring. */
+export function useRecurringSuggestions() {
+  const { client } = useAuth()
+  return useQuery({
+    queryKey: ["recurring-suggestions"],
+    queryFn: () => client.listRecurringSuggestions(),
   })
 }
 
@@ -77,6 +105,19 @@ export function useCreateIncome() {
   })
 }
 
+export function useUpdateIncome() {
+  const { client } = useAuth()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: IncomeUpdateInput }) => client.updateIncome(id, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["income"] })
+      qc.invalidateQueries({ queryKey: ["accounts"] })
+      qc.invalidateQueries({ queryKey: ["recurring-suggestions"] })
+    },
+  })
+}
+
 export function useDeleteIncome() {
   const { client } = useAuth()
   const qc = useQueryClient()
@@ -85,6 +126,78 @@ export function useDeleteIncome() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["income"] })
       qc.invalidateQueries({ queryKey: ["accounts"] })
+    },
+  })
+}
+
+// ---- Subscriptions ----
+
+export function useSubscriptions() {
+  const { client } = useAuth()
+  return useQuery({
+    queryKey: ["subscriptions"],
+    queryFn: () => client.listSubscriptions({ includeInactive: true }),
+  })
+}
+
+export function useSubscription(id: string) {
+  const { client } = useAuth()
+  return useQuery({
+    queryKey: ["subscription", id],
+    queryFn: () => client.getSubscription(id),
+    enabled: !!id,
+  })
+}
+
+export function useSubscriptionPayments(id: string) {
+  const { client } = useAuth()
+  return useQuery({
+    queryKey: ["subscription-payments", id],
+    queryFn: () => client.listSubscriptionPayments(id),
+    enabled: !!id,
+  })
+}
+
+export function useCreateSubscription() {
+  const { client } = useAuth()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: SubscriptionInput) => client.createSubscription(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
+  })
+}
+
+export function useUpdateSubscription() {
+  const { client } = useAuth()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: SubscriptionUpdateInput }) => client.updateSubscription(id, input),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ["subscriptions"] })
+      qc.invalidateQueries({ queryKey: ["subscription", v.id] })
+    },
+  })
+}
+
+export function useDeleteSubscription() {
+  const { client } = useAuth()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => client.deleteSubscription(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["subscriptions"] }),
+  })
+}
+
+export function useMarkSubscriptionPaid() {
+  const { client } = useAuth()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input?: SubscriptionPaymentInput }) => client.markSubscriptionPaid(id, input),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ["subscriptions"] })
+      qc.invalidateQueries({ queryKey: ["subscription", v.id] })
+      qc.invalidateQueries({ queryKey: ["subscription-payments", v.id] })
+      qc.invalidateQueries({ queryKey: ["expenses"] })
     },
   })
 }
@@ -171,6 +284,35 @@ export function useDisconnectGoogle() {
   return useMutation({
     mutationFn: () => client.disconnectGoogle(),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["gmail-status"] }),
+  })
+}
+
+/** Trigger an on-demand Gmail sync, then refresh the status and review queue. */
+export function useSyncGmail() {
+  const { client } = useAuth()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => client.syncGmail(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["gmail-status"] })
+      qc.invalidateQueries({ queryKey: ["messages"] })
+    },
+  })
+}
+
+/**
+ * Enable curated capture (Expenses label + Purchases category) and import the
+ * existing curated mail, then refresh the status and review queue.
+ */
+export function useBackfillGmail() {
+  const { client } = useAuth()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => client.backfillGmail(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["gmail-status"] })
+      qc.invalidateQueries({ queryKey: ["messages"] })
+    },
   })
 }
 

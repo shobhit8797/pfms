@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/popover"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
+import { ReceiptUploadField } from "@/components/income/receipt-upload-field"
 import { toast } from "sonner"
 
 const formSchema = z.object({
@@ -73,6 +74,7 @@ interface AddIncomeDialogProps {
 export function AddIncomeDialog({ accounts }: AddIncomeDialogProps) {
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const [receipt, setReceipt] = useState<{ url: string | null; name: string | null }>({ url: null, name: null })
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema) as any,
@@ -103,6 +105,8 @@ export function AddIncomeDialog({ accounts }: AddIncomeDialogProps) {
       if (values.bankAccountId) formData.append("bankAccountId", values.bankAccountId)
       formData.append("category", values.category)
       if (values.notes) formData.append("notes", values.notes)
+      if (receipt.url) formData.append("receiptUrl", receipt.url)
+      if (receipt.name) formData.append("receiptName", receipt.name)
 
       const result = await createIncome(undefined, formData)
 
@@ -110,6 +114,7 @@ export function AddIncomeDialog({ accounts }: AddIncomeDialogProps) {
         toast.success(result.success)
         setOpen(false)
         form.reset()
+        setReceipt({ url: null, name: null })
       } else {
         toast.error(result.error || "Failed to add income")
       }
@@ -363,6 +368,8 @@ export function AddIncomeDialog({ accounts }: AddIncomeDialogProps) {
                 </FormItem>
               )}
             />
+
+            <ReceiptUploadField onChange={setReceipt} />
 
             <DialogFooter>
               <Button type="submit" disabled={isPending}>

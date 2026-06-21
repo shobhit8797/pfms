@@ -26,6 +26,8 @@ const SPAN: Record<Period, number> = { daily: 14, weekly: 8, monthly: 6 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
+const labelFor = (p: Period) => (p === "daily" ? "daily" : p === "weekly" ? "weekly" : "monthly")
+
 function startOfDay(d: Date): Date {
   const x = new Date(d)
   x.setHours(0, 0, 0, 0)
@@ -96,7 +98,9 @@ const CHART_HEIGHT = 160
 export function TrendChart({ expenses, income }: { expenses: ExpenseDTO[]; income: IncomeDTO[] }) {
   const c = useThemeColors()
   const [series, setSeries] = useState<Series>("both")
-  const [period, setPeriod] = useState<Period>("daily")
+  // Default to the widest window so the chart shows data even when recent
+  // activity is sparse; the user can drill down to weekly/daily.
+  const [period, setPeriod] = useState<Period>("monthly")
   const [selected, setSelected] = useState<number | null>(null)
 
   const buckets = useMemo(() => buildBuckets(period, expenses, income), [period, expenses, income])
@@ -155,8 +159,11 @@ export function TrendChart({ expenses, income }: { expenses: ExpenseDTO[]; incom
       </View>
 
       {max === 0 ? (
-        <View className="items-center justify-center py-10" style={{ height: CHART_HEIGHT }}>
-          <Text className="text-sm text-muted-foreground">No data for this period yet.</Text>
+        <View className="items-center justify-center px-6 py-10" style={{ height: CHART_HEIGHT }}>
+          <Text className="text-sm text-muted-foreground">No {labelFor(period)} data in this window.</Text>
+          <Text className="mt-1 text-center text-xs text-muted-foreground">
+            Try a wider range, or add an expense or income entry.
+          </Text>
         </View>
       ) : (
         <View className="flex-row items-end" style={{ height: CHART_HEIGHT }}>

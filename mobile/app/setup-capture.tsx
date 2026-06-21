@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, Linking, ScrollView, Text, TextInput, Touchab
 import { Ionicons } from "@expo/vector-icons"
 import { useFocusEffect } from "expo-router"
 import { ApiError } from "@pfms/shared"
-import { useConnectGoogle, useDisconnectGoogle, useGmailStatus, useIssueToken } from "../lib/hooks"
+import { useBackfillGmail, useConnectGoogle, useDisconnectGoogle, useGmailStatus, useIssueToken, useSyncGmail } from "../lib/hooks"
 import { useThemeColors } from "../lib/theme"
 import { API_BASE_URL } from "../lib/config"
 import { formatDate } from "../lib/format"
@@ -129,10 +129,43 @@ function GmailSection() {
   const c = useThemeColors()
   const connect = useConnectGoogle()
   const disconnect = useDisconnectGoogle()
+  const sync = useSyncGmail()
+  const backfill = useBackfillGmail()
 
   // Re-check status whenever the screen regains focus (e.g. after returning
   // from the Google consent browser flow).
   useFocusEffect(useCallback(() => { status.refetch() }, [status]))
+
+  const onSync = async () => {
+    try {
+      const res = await sync.mutateAsync()
+      Alert.alert(
+        "Sync complete",
+        res.queued > 0
+          ? `Found ${res.queued} new transaction${res.queued === 1 ? "" : "s"} to review.`
+          : res.fetched > 0
+            ? "Checked your latest emails — nothing new to review."
+            : "No new transaction emails since the last check."
+      )
+    } catch (e) {
+      Alert.alert("Couldn't sync", e instanceof ApiError ? e.message : "Please try again")
+    }
+  }
+
+  const onBackfill = async () => {
+    try {
+      const res = await backfill.mutateAsync()
+      Alert.alert(
+        "Import complete",
+        (res.queued > 0
+          ? `Imported ${res.queued} transaction${res.queued === 1 ? "" : "s"} from your Expenses label and Purchases.`
+          : "Nothing new to import — your labeled and purchase emails are already captured.") +
+          (res.truncated ? " There may be more — tap again to continue." : "")
+      )
+    } catch (e) {
+      Alert.alert("Couldn't import", e instanceof ApiError ? e.message : "Please try again")
+    }
+  }
 
   const onConnect = async () => {
     try {
@@ -179,7 +212,20 @@ function GmailSection() {
                 : "Sync error — try reconnecting."}
           </Text>
           <View className="mt-3 flex-row gap-2">
-            {data.status !== "CONNECTED" && (
+            {data.status === "CONNECTED" ? (
+              <TouchableOpacity
+                onPress={onSync}
+                disabled={sync.isPending}
+                className="flex-1 flex-row items-center justify-center gap-2 rounded-xl bg-primary py-2.5"
+              >
+                {sync.isPending ? <ActivityIndicator color={c.primaryForeground} /> : (
+                  <>
+                    <Ionicons name="refresh" size={16} color={c.primaryForeground} />
+                    <Text className="text-sm font-semibold text-primary-foreground">Check now</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            ) : (
               <TouchableOpacity onPress={onConnect} disabled={connect.isPending} className="flex-1 items-center rounded-xl bg-primary py-2.5">
                 <Text className="text-sm font-semibold text-primary-foreground">Reconnect</Text>
               </TouchableOpacity>
@@ -188,6 +234,27 @@ function GmailSection() {
               <Text className="text-sm font-semibold text-foreground">Disconnect</Text>
             </TouchableOpacity>
           </View>
+
+          {data.status === "CONNECTED" && (
+            <>
+              <TouchableOpacity
+                onPress={onBackfill}
+                disabled={backfill.isPending}
+                className="mt-2 flex-row items-center justify-center gap-2 rounded-xl border border-primary/40 bg-secondary py-2.5"
+              >
+                {backfill.isPending ? <ActivityIndicator color={c.primary} /> : (
+                  <>
+                    <Ionicons name="download-outline" size={16} color={c.primary} />
+                    <Text className="text-sm font-semibold text-primary">Import Expenses &amp; Purchases</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              <Text className="mt-1.5 text-xs leading-4 text-muted-foreground">
+                One-time import of emails in your Gmail “Expenses” label and the Purchases
+                category, and keeps watching them going forward.
+              </Text>
+            </>
+          )}
         </>
       ) : (
         <>

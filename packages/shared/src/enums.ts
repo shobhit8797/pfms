@@ -50,6 +50,14 @@ export const FREQUENCY_LABELS: Record<Frequency, string> = {
   YEARLY: "Yearly",
 }
 
+export const SUBSCRIPTION_PAYMENT_STATUSES = ["PAID", "SKIPPED"] as const
+export type SubscriptionPaymentStatus = (typeof SUBSCRIPTION_PAYMENT_STATUSES)[number]
+
+export const SUBSCRIPTION_PAYMENT_STATUS_LABELS: Record<SubscriptionPaymentStatus, string> = {
+  PAID: "Paid",
+  SKIPPED: "Skipped",
+}
+
 // ---- Message capture (mirrors the Prisma enums; keep in sync) ----
 
 export const MESSAGE_SOURCES = ["IOS_SHORTCUT", "ANDROID_SMS", "SHARE", "MANUAL", "EMAIL"] as const

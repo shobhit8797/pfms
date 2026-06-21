@@ -1,96 +1,177 @@
 "use server"
 
 import { auth } from "@/auth"
-import { prisma } from "@/lib/db"
-import { Frequency, Subscription } from "@prisma/client"
 import { revalidatePath } from "next/cache"
-import { z } from "zod"
-
-const subscriptionSchema = z.object({
-  serviceName: z.string().min(1, "Service name is required"),
-  amount: z.coerce.number().positive("Amount must be positive"),
-  billingCycle: z.nativeEnum(Frequency),
-  startDate: z.string().transform((str) => new Date(str)),
-  nextBillingDate: z.string().transform((str) => new Date(str)),
-  autoRenewal: z.boolean().optional(),
-  category: z.string().min(1, "Category is required"),
-  paymentMethod: z.string().min(1, "Payment method is required"),
-  notes: z.string().optional(),
-})
+import { ServiceError } from "@/lib/errors"
+import { serializeDecimals } from "@/lib/utils"
+import {
+  subscriptionCreateSchema,
+  subscriptionUpdateSchema,
+  subscriptionPaymentSchema,
+  type SubscriptionDTO,
+  type SubscriptionPaymentDTO,
+  type SubscriptionMonthDTO,
+} from "@pfms/shared"
+import {
+  listSubscriptions,
+  createSubscription as createSubscriptionService,
+  updateSubscription as updateSubscriptionService,
+  cancelSubscription as cancelSubscriptionService,
+  deleteSubscription as deleteSubscriptionService,
+  markPaid as markPaidService,
+  listPayments,
+  getMonthGrid,
+} from "@/lib/services/subscription.service"
 
 export type SubscriptionState = {
   error?: string
   success?: string
 }
 
-export async function createSubscription(prevState: SubscriptionState | undefined, formData: FormData): Promise<SubscriptionState> {
-  const session = await auth()
-  if (!session?.user?.id) {
-    return { error: "Unauthorized" }
-  }
+function toErrorState(error: unknown, fallback: string): SubscriptionState {
+  if (error instanceof ServiceError) return { error: error.message }
+  console.error(fallback, error)
+  return { error: fallback }
+}
 
-  const rawData = {
+/** Reads the subscription form into the shape the shared Zod schema expects. */
+function parseSubscriptionForm(formData: FormData) {
+  return {
     serviceName: formData.get("serviceName"),
     amount: formData.get("amount"),
     billingCycle: formData.get("billingCycle"),
     startDate: formData.get("startDate"),
+    endDate: formData.get("endDate") || undefined,
     nextBillingDate: formData.get("nextBillingDate"),
     autoRenewal: formData.get("autoRenewal") === "on",
     category: formData.get("category"),
     paymentMethod: formData.get("paymentMethod"),
-    notes: formData.get("notes"),
+    creditCardId: formData.get("creditCardId") || undefined,
+    notes: formData.get("notes") || undefined,
   }
+}
 
-  const validated = subscriptionSchema.safeParse(rawData)
+export async function createSubscription(
+  prevState: SubscriptionState | undefined,
+  formData: FormData
+): Promise<SubscriptionState> {
+  const session = await auth()
+  if (!session?.user?.id) return { error: "Unauthorized" }
 
-  if (!validated.success) {
-    console.error("Subscription validation errors:", validated.error.issues)
-    // Return the first validation error for better UX
-    const firstError = validated.error.issues[0]
-    return { error: `${firstError.path.join(".")}: ${firstError.message}` }
+  const parsed = subscriptionCreateSchema.safeParse(parseSubscriptionForm(formData))
+  if (!parsed.success) {
+    const first = parsed.error.issues[0]
+    return { error: `${first.path.join(".")}: ${first.message}` }
   }
-
-  const data = validated.data
 
   try {
-    await prisma.subscription.create({
-      data: {
-        userId: session.user.id,
-        ...data,
-        reminderDays: [1, 3], // Default reminders
-      },
-    })
-
+    await createSubscriptionService(session.user.id, parsed.data)
     revalidatePath("/dashboard/subscriptions")
     return { success: "Subscription added successfully" }
   } catch (error) {
-    console.error("Create subscription error:", error)
-    return { error: "Failed to create subscription" }
+    return toErrorState(error, "Failed to create subscription")
   }
 }
 
-export async function getSubscriptions(): Promise<Subscription[]> {
+export async function getSubscriptions(includeInactive = false): Promise<SubscriptionDTO[]> {
   const session = await auth()
   if (!session?.user?.id) return []
-
-  return await prisma.subscription.findMany({
-    where: { userId: session.user.id, isActive: true },
-    orderBy: { nextBillingDate: "asc" },
-  })
+  const { items } = await listSubscriptions(session.user.id, { includeInactive })
+  return serializeDecimals(items) as unknown as SubscriptionDTO[]
 }
 
-export async function cancelSubscription(id: string) {
-    const session = await auth()
-    if (!session?.user?.id) return { error: "Unauthorized" }
-  
-    try {
-      await prisma.subscription.update({
-        where: { id, userId: session.user.id },
-        data: { isActive: false }
-      })
-      revalidatePath("/dashboard/subscriptions")
-      return { success: "Subscription cancelled" }
-    } catch (error) {
-      return { error: "Failed to cancel subscription" }
-    }
+export async function getSubscriptionDetail(
+  id: string
+): Promise<{ payments: SubscriptionPaymentDTO[]; months: SubscriptionMonthDTO[] } | null> {
+  const session = await auth()
+  if (!session?.user?.id) return null
+  const [{ items }, months] = await Promise.all([
+    listPayments(session.user.id, id),
+    getMonthGrid(session.user.id, id),
+  ])
+  return serializeDecimals({ payments: items, months }) as unknown as {
+    payments: SubscriptionPaymentDTO[]
+    months: SubscriptionMonthDTO[]
+  }
+}
+
+export async function updateSubscription(id: string, formData: FormData): Promise<SubscriptionState> {
+  const session = await auth()
+  if (!session?.user?.id) return { error: "Unauthorized" }
+
+  const parsed = subscriptionUpdateSchema.safeParse(parseSubscriptionForm(formData))
+  if (!parsed.success) {
+    const first = parsed.error.issues[0]
+    return { error: `${first.path.join(".")}: ${first.message}` }
+  }
+
+  try {
+    await updateSubscriptionService(session.user.id, id, parsed.data)
+    revalidatePath("/dashboard/subscriptions")
+    return { success: "Subscription updated" }
+  } catch (error) {
+    return toErrorState(error, "Failed to update subscription")
+  }
+}
+
+export async function cancelSubscription(id: string): Promise<SubscriptionState> {
+  const session = await auth()
+  if (!session?.user?.id) return { error: "Unauthorized" }
+  try {
+    await cancelSubscriptionService(session.user.id, id)
+    revalidatePath("/dashboard/subscriptions")
+    return { success: "Subscription cancelled" }
+  } catch (error) {
+    return toErrorState(error, "Failed to cancel subscription")
+  }
+}
+
+export async function reactivateSubscription(id: string): Promise<SubscriptionState> {
+  const session = await auth()
+  if (!session?.user?.id) return { error: "Unauthorized" }
+  try {
+    await updateSubscriptionService(session.user.id, id, { isActive: true })
+    revalidatePath("/dashboard/subscriptions")
+    return { success: "Subscription reactivated" }
+  } catch (error) {
+    return toErrorState(error, "Failed to reactivate subscription")
+  }
+}
+
+export async function deleteSubscription(id: string): Promise<SubscriptionState> {
+  const session = await auth()
+  if (!session?.user?.id) return { error: "Unauthorized" }
+  try {
+    await deleteSubscriptionService(session.user.id, id)
+    revalidatePath("/dashboard/subscriptions")
+    return { success: "Subscription deleted" }
+  } catch (error) {
+    return toErrorState(error, "Failed to delete subscription")
+  }
+}
+
+export async function markSubscriptionPaid(id: string, formData?: FormData): Promise<SubscriptionState> {
+  const session = await auth()
+  if (!session?.user?.id) return { error: "Unauthorized" }
+
+  const raw = formData
+    ? {
+        periodStart: formData.get("periodStart") || undefined,
+        amount: formData.get("amount") || undefined,
+        paidDate: formData.get("paidDate") || undefined,
+        createExpense: formData.get("createExpense") === "on",
+        notes: formData.get("notes") || undefined,
+      }
+    : {}
+  const parsed = subscriptionPaymentSchema.safeParse(raw)
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message || "Invalid input" }
+
+  try {
+    await markPaidService(session.user.id, id, parsed.data)
+    revalidatePath("/dashboard/subscriptions")
+    revalidatePath("/dashboard/expenses")
+    return { success: "Marked as paid" }
+  } catch (error) {
+    return toErrorState(error, "Failed to mark as paid")
+  }
 }

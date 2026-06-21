@@ -3,12 +3,19 @@ import type { IncomeInput, IncomeUpdateInput } from "./validation/income"
 import type { CardCreateInput } from "./validation/card"
 import type { UpiHandleCreateInput } from "./validation/upi-handle"
 import type { MessageIngestInput, MessageResolveInput } from "./validation/message"
+import type {
+  SubscriptionInput,
+  SubscriptionUpdateInput,
+  SubscriptionPaymentInput,
+} from "./validation/subscription"
 import type { InboundMessageStatus } from "./enums"
 import type {
   AccountPickerDTO,
   CardDTO,
   ExpenseDTO,
+  GmailBackfillDTO,
   GmailStatusDTO,
+  GmailSyncDTO,
   IncomeDTO,
   InboundMessageDTO,
   IngestMessageDTO,
@@ -16,6 +23,10 @@ import type {
   ListResponse,
   LoginResponse,
   ReceiptScanDTO,
+  RecurringSuggestionDTO,
+  SubscriptionDTO,
+  SubscriptionMonthDTO,
+  SubscriptionPaymentDTO,
   UpiHandleDTO,
 } from "./types"
 
@@ -121,6 +132,43 @@ export class PfmsClient {
     return this.request<{ ok: true }>(`/api/v1/income/${id}`, { method: "DELETE" })
   }
 
+  // ---- Recurring suggestions ----
+  /** Detected month-on-month repeats not yet marked recurring, for one-tap confirm. */
+  listRecurringSuggestions() {
+    return this.request<{ items: RecurringSuggestionDTO[] }>("/api/v1/expenses/recurring-suggestions")
+  }
+
+  // ---- Subscriptions ----
+  listSubscriptions(params: { includeInactive?: boolean } = {}) {
+    const q = new URLSearchParams()
+    if (params.includeInactive) q.set("includeInactive", "1")
+    const qs = q.toString()
+    return this.request<ListResponse<SubscriptionDTO>>(`/api/v1/subscriptions${qs ? `?${qs}` : ""}`)
+  }
+  getSubscription(id: string) {
+    return this.request<{ subscription: SubscriptionDTO; months: SubscriptionMonthDTO[] }>(
+      `/api/v1/subscriptions/${id}`
+    )
+  }
+  createSubscription(input: SubscriptionInput) {
+    return this.request<SubscriptionDTO>("/api/v1/subscriptions", { method: "POST", body: JSON.stringify(input) })
+  }
+  updateSubscription(id: string, input: SubscriptionUpdateInput) {
+    return this.request<SubscriptionDTO>(`/api/v1/subscriptions/${id}`, { method: "PATCH", body: JSON.stringify(input) })
+  }
+  deleteSubscription(id: string) {
+    return this.request<{ ok: true }>(`/api/v1/subscriptions/${id}`, { method: "DELETE" })
+  }
+  listSubscriptionPayments(id: string) {
+    return this.request<ListResponse<SubscriptionPaymentDTO>>(`/api/v1/subscriptions/${id}/payments`)
+  }
+  markSubscriptionPaid(id: string, input: SubscriptionPaymentInput = {}) {
+    return this.request<SubscriptionPaymentDTO>(`/api/v1/subscriptions/${id}/payments`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    })
+  }
+
   // ---- Pickers (read-only) ----
   listAccounts() {
     return this.request<{ items: AccountPickerDTO[] }>("/api/v1/accounts")
@@ -177,6 +225,17 @@ export class PfmsClient {
   /** Current Gmail connection status. */
   gmailStatus() {
     return this.request<GmailStatusDTO>("/api/v1/google")
+  }
+  /** Trigger an on-demand Gmail sync (manual equivalent of the cron sweep). */
+  syncGmail() {
+    return this.request<GmailSyncDTO>("/api/v1/google/sync", { method: "POST" })
+  }
+  /**
+   * Enable curated capture — point ongoing sync at the Expenses label + Purchases
+   * category and import existing curated mail. Re-callable (dedupes) to go deeper.
+   */
+  backfillGmail() {
+    return this.request<GmailBackfillDTO>("/api/v1/google/backfill", { method: "POST" })
   }
   /** Disconnect Gmail (revokes the token and forgets it). */
   disconnectGoogle() {

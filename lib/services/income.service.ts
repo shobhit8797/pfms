@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db"
 import { notFound, validation } from "@/lib/errors"
+import { deleteBlob } from "@/lib/blob"
 import type { IncomeInput, IncomeUpdateInput } from "@pfms/shared"
 import type { Prisma } from "@prisma/client"
 
@@ -52,6 +53,8 @@ export async function createIncome(userId: string, input: IncomeInput) {
         bankAccountId: input.bankAccountId ?? null,
         category: input.category,
         notes: input.notes ?? null,
+        receiptUrl: input.receiptUrl ?? null,
+        receiptName: input.receiptName ?? null,
       },
     })
     if (input.bankAccountId) {
@@ -96,9 +99,17 @@ export async function updateIncome(userId: string, id: string, input: IncomeUpda
         bankAccountId: merged.bankAccountId ?? null,
         ...(input.category !== undefined ? { category: input.category } : {}),
         ...(input.notes !== undefined ? { notes: input.notes } : {}),
+        ...(input.receiptUrl !== undefined ? { receiptUrl: input.receiptUrl ?? null } : {}),
+        ...(input.receiptName !== undefined ? { receiptName: input.receiptName ?? null } : {}),
       },
     })
   })
+
+  // If the receipt was replaced or cleared, drop the now-orphaned blob (best-effort).
+  if (input.receiptUrl !== undefined && existing.receiptUrl && existing.receiptUrl !== input.receiptUrl) {
+    await deleteBlob(existing.receiptUrl)
+  }
+
   return getIncomeOrThrow(userId, id)
 }
 
@@ -110,5 +121,7 @@ export async function deleteIncome(userId: string, id: string) {
     }
     await tx.income.delete({ where: { id } })
   })
+  // Remove the attached receipt blob too (best-effort, after the row is gone).
+  if (existing.receiptUrl) await deleteBlob(existing.receiptUrl)
   return { ok: true as const }
 }

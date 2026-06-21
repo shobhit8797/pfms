@@ -5,6 +5,7 @@ import type {
   MessageSource,
   InboundMessageStatus,
   TxnDirection,
+  SubscriptionPaymentStatus,
 } from "./enums"
 
 /**
@@ -53,8 +54,71 @@ export type IncomeDTO = {
   bankAccountId: string | null
   category: string
   notes: string | null
+  receiptUrl: string | null
+  receiptName: string | null
   createdAt: string
   bankAccount?: { accountName: string; bankName: string } | null
+}
+
+export type SubscriptionDTO = {
+  id: string
+  serviceName: string
+  amount: number
+  billingCycle: Frequency
+  startDate: string
+  endDate: string | null
+  nextBillingDate: string
+  autoRenewal: boolean
+  reminderDays: number[]
+  category: string
+  paymentMethod: string
+  creditCardId: string | null
+  isActive: boolean
+  notes: string | null
+  createdAt: string
+  creditCard?: { cardName: string; lastFourDigits: string } | null
+  /** Convenience aggregate the list endpoint may include. */
+  paymentsCount?: number
+  lastPaidDate?: string | null
+}
+
+export type SubscriptionPaymentDTO = {
+  id: string
+  subscriptionId: string
+  periodStart: string
+  dueDate: string
+  amount: number
+  status: SubscriptionPaymentStatus
+  paidDate: string | null
+  expenseId: string | null
+  notes: string | null
+  createdAt: string
+}
+
+/** A single billing period in the active/paid month grid. */
+export type SubscriptionMonthDTO = {
+  /** ISO date of the period start. */
+  period: string
+  /** Within the subscription's active window (startDate..endDate/cancel). */
+  active: boolean
+  /** A PAID SubscriptionPayment exists for this period. */
+  paid: boolean
+  amount: number
+}
+
+/** A detected recurring-transaction candidate the user can confirm in one tap. */
+export type RecurringSuggestionDTO = {
+  kind: "expense" | "income"
+  /** Representative label (expense description / income source). */
+  label: string
+  /** Rounded representative amount. */
+  amount: number
+  /** Number of distinct months the pattern was seen in. */
+  occurrences: number
+  suggestedFrequency: Frequency
+  /** IDs of the matching rows not yet marked recurring. */
+  ids: string[]
+  category: string | null
 }
 
 export type AccountPickerDTO = {
@@ -180,6 +244,16 @@ export type GmailStatusDTO =
       status: "CONNECTED" | "REVOKED" | "ERROR"
       lastSyncedAt: string | null
     }
+
+/** Result of an on-demand Gmail sync: emails pulled, and how many were newly queued. */
+export type GmailSyncDTO = { fetched: number; queued: number }
+
+/**
+ * Result of enabling curated capture (Expenses label + Purchases category) and
+ * backfilling existing mail. `truncated` means the fetch cap was hit — run again
+ * to import more (already-imported mail dedupes without re-parsing).
+ */
+export type GmailBackfillDTO = { fetched: number; queued: number; truncated: boolean }
 
 export type ListResponse<T> = { items: T[]; total: number; limit: number; offset: number }
 

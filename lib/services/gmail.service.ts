@@ -7,7 +7,7 @@ import {
   refreshAccessToken,
   type GoogleTokens,
 } from "@/lib/google/oauth"
-import { getParsedMessage, listMessageIds } from "@/lib/google/gmail"
+import { getParsedMessage, listMessageIds, listMessageIdsPage } from "@/lib/google/gmail"
 import { ingestMessage } from "@/lib/services/message.service"
 import type { GmailConnection } from "@prisma/client"
 
@@ -23,8 +23,19 @@ import type { GmailConnection } from "@prisma/client"
 const DEFAULT_QUERY =
   '(debited OR credited OR spent OR "payment" OR transaction OR txn OR receipt OR invoice OR "order placed" OR "order confirmed") -category:promotions -category:social'
 
+/**
+ * High-signal curated sources for one user: their **Expenses** Gmail label plus
+ * Gmail's built-in **Purchases** category (order confirmations, receipts). Used
+ * as the backfill target and OR-ed into ongoing sync by `enableCuratedCapture`.
+ */
+export const CURATED_QUERY = "(label:expenses) OR (category:purchases)"
+
+/** Ongoing per-connection sync once curated capture is on: curated OR keywords. */
+export const CURATED_SYNC_QUERY = `${CURATED_QUERY} OR (${DEFAULT_QUERY})`
+
 const MAX_MESSAGES_PER_SYNC = 25
 const FIRST_SYNC_LOOKBACK = "newer_than:30d" // don't pull years of history on connect
+const BACKFILL_MAX = 300 // safety cap for the one-time catch-up (logs if hit)
 
 // ---- Connect / status / disconnect -----------------------------------------
 
@@ -95,6 +106,23 @@ async function freshAccessToken(conn: GmailConnection): Promise<string> {
   return refreshed.accessToken
 }
 
+/** Fetches one email, normalizes it to message text, and runs it through ingest. */
+async function ingestEmail(
+  userId: string,
+  accessToken: string,
+  id: string
+): Promise<{ duplicate: boolean; date: Date }> {
+  const email = await getParsedMessage(accessToken, id)
+  const text = `Subject: ${email.subject ?? ""}\nFrom: ${email.from ?? ""}\n\n${email.body}`.slice(0, 20000)
+  const res = await ingestMessage(userId, {
+    text,
+    sender: email.from ?? undefined,
+    receivedAt: email.date,
+    source: "EMAIL",
+  })
+  return { duplicate: res.duplicate, date: email.date }
+}
+
 function buildQuery(conn: GmailConnection): string {
   const base = conn.syncQuery?.trim() || DEFAULT_QUERY
   if (!conn.lastSyncedAt) return `${base} ${FIRST_SYNC_LOOKBACK}`
@@ -128,15 +156,8 @@ export async function syncConnection(userId: string): Promise<{ fetched: number;
     let queued = 0
     let newest = conn.lastSyncedAt?.getTime() ?? 0
     for (const id of ids) {
-      const email = await getParsedMessage(accessToken, id)
-      newest = Math.max(newest, email.date.getTime())
-      const text = `Subject: ${email.subject ?? ""}\nFrom: ${email.from ?? ""}\n\n${email.body}`.slice(0, 20000)
-      const res = await ingestMessage(userId, {
-        text,
-        sender: email.from ?? undefined,
-        receivedAt: email.date,
-        source: "EMAIL",
-      })
+      const res = await ingestEmail(userId, accessToken, id)
+      newest = Math.max(newest, res.date.getTime())
       if (!res.duplicate) queued++
     }
     await prisma.gmailConnection.update({
@@ -155,6 +176,71 @@ export async function syncConnection(userId: string): Promise<{ fetched: number;
     })
     return { fetched: 0, queued: 0 }
   }
+}
+
+/**
+ * One-time catch-up: pulls **all** messages matching `query` (no watermark/date
+ * bound), paging past the per-sync cap, and ingests each. Unlike `syncConnection`
+ * it does not move the sync watermark — ongoing forward-sync is untouched — and
+ * it walks every page so old mail (e.g. emails you labeled long ago) is included.
+ * Idempotent: ingest dedupes by text + transaction fingerprint, so re-running is
+ * safe. `truncated` is true when `max` was hit and more mail remains.
+ */
+export async function backfillConnection(
+  userId: string,
+  query: string,
+  max = BACKFILL_MAX
+): Promise<{ fetched: number; queued: number; truncated: boolean }> {
+  const conn = await prisma.gmailConnection.findUnique({ where: { userId } })
+  if (!conn) throw notFound("No connected Google account")
+
+  let fetched = 0
+  let queued = 0
+  let truncated = false
+  let pageToken: string | undefined
+  do {
+    // Re-read the connection each page so token refreshes (which persist a new
+    // expiry) are picked up — a long backfill can outlive a single access token.
+    const live = await prisma.gmailConnection.findUnique({ where: { userId } })
+    if (!live) break
+    const accessToken = await freshAccessToken(live)
+
+    const { ids, nextPageToken } = await listMessageIdsPage(
+      accessToken,
+      query,
+      Math.min(100, max - fetched),
+      pageToken
+    )
+    for (const id of ids) {
+      const res = await ingestEmail(userId, accessToken, id)
+      fetched++
+      if (!res.duplicate) queued++
+    }
+    pageToken = nextPageToken
+    if (fetched >= max && pageToken) {
+      truncated = true
+      break
+    }
+  } while (pageToken)
+
+  return { fetched, queued, truncated }
+}
+
+/**
+ * Turns on curated capture for one connection: points ongoing sync at the
+ * Expenses label + Purchases category (in addition to keywords) and backfills the
+ * existing curated mail. Idempotent. `max` bounds the backfill's fetch count —
+ * interactive callers pass a small value to stay within the request timeout;
+ * re-running goes deeper (already-imported mail dedupes without re-parsing).
+ */
+export async function enableCuratedCapture(
+  userId: string,
+  max = BACKFILL_MAX
+): Promise<{ fetched: number; queued: number; truncated: boolean }> {
+  const conn = await prisma.gmailConnection.findUnique({ where: { userId } })
+  if (!conn) throw notFound("No connected Google account")
+  await prisma.gmailConnection.update({ where: { userId }, data: { syncQuery: CURATED_SYNC_QUERY } })
+  return backfillConnection(userId, CURATED_QUERY, max)
 }
 
 /** Cron entrypoint: sync the least-recently-synced connected accounts. */

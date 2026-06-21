@@ -18,6 +18,8 @@ export const incomeBaseSchema = z.object({
   bankAccountId: z.string().optional().nullable(),
   category: z.string().min(1, "Category is required"),
   notes: z.string().optional().nullable(),
+  receiptUrl: z.string().url("Invalid receipt URL").optional().nullable(),
+  receiptName: z.string().max(255).optional().nullable(),
 })
 
 export const incomeCreateSchema = incomeBaseSchema.superRefine((d, ctx) => {

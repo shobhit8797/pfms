@@ -5,10 +5,14 @@ import {
   ApiError,
   PAYMENT_METHODS,
   PAYMENT_METHOD_LABELS,
+  FREQUENCIES,
+  FREQUENCY_LABELS,
   expenseCreateSchema,
+  type ExpenseDTO,
+  type Frequency,
   type PaymentMethod,
 } from "@pfms/shared"
-import { useAccounts, useCards, useCreateExpense, useScanReceipt } from "../lib/hooks"
+import { useAccounts, useCards, useCreateExpense, useUpdateExpense, useScanReceipt } from "../lib/hooks"
 import { useAuth } from "../lib/auth"
 import { useThemeColors } from "../lib/theme"
 import { todayISO } from "../lib/format"
@@ -16,21 +20,33 @@ import { captureReceiptPhoto, pickReceiptDocument, pickReceiptImage, type Picked
 import { cacheReceiptLocally, uploadReceipt } from "../lib/receipt-store"
 import { Chips } from "./Chips"
 
-export function AddExpenseModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+export function AddExpenseModal({
+  visible,
+  onClose,
+  expense,
+}: {
+  visible: boolean
+  onClose: () => void
+  expense?: ExpenseDTO
+}) {
   const create = useCreateExpense()
+  const update = useUpdateExpense()
   const scan = useScanReceipt()
   const accounts = useAccounts()
   const cards = useCards()
   const c = useThemeColors()
   const { getToken } = useAuth()
+  const editing = !!expense
 
-  const [amount, setAmount] = useState("")
-  const [description, setDescription] = useState("")
-  const [category, setCategory] = useState("")
-  const [expenseDate, setExpenseDate] = useState(todayISO())
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH")
-  const [bankAccountId, setBankAccountId] = useState<string | null>(null)
-  const [creditCardId, setCreditCardId] = useState<string | null>(null)
+  const [amount, setAmount] = useState(expense ? String(expense.amount) : "")
+  const [description, setDescription] = useState(expense?.description ?? "")
+  const [category, setCategory] = useState(expense?.category ?? "")
+  const [expenseDate, setExpenseDate] = useState(expense ? expense.expenseDate.slice(0, 10) : todayISO())
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(expense?.paymentMethod ?? "CASH")
+  const [bankAccountId, setBankAccountId] = useState<string | null>(expense?.bankAccountId ?? null)
+  const [creditCardId, setCreditCardId] = useState<string | null>(expense?.creditCardId ?? null)
+  const [isRecurring, setIsRecurring] = useState(expense?.isRecurring ?? false)
+  const [frequency, setFrequency] = useState<Frequency>(expense?.frequency ?? "MONTHLY")
   const [error, setError] = useState<string | null>(null)
   const [attachment, setAttachment] = useState<PickedReceipt | null>(null)
   const [scannedNotice, setScannedNotice] = useState(false)
@@ -40,6 +56,7 @@ export function AddExpenseModal({ visible, onClose }: { visible: boolean; onClos
   const reset = () => {
     setAmount(""); setDescription(""); setCategory(""); setExpenseDate(todayISO())
     setPaymentMethod("CASH"); setBankAccountId(null); setCreditCardId(null); setError(null)
+    setIsRecurring(false); setFrequency("MONTHLY")
     setAttachment(null); setScannedNotice(false); setKeepReceipt(true); setUploading(false)
   }
 
@@ -94,7 +111,8 @@ export function AddExpenseModal({ visible, onClose }: { visible: boolean; onClos
 
   const onSubmit = async () => {
     setError(null)
-    const willKeep = attachment != null && keepReceipt
+    // In edit mode, a newly attached receipt is kept; otherwise the existing one stays.
+    const willKeep = attachment != null && (editing || keepReceipt)
 
     // Upload the receipt first (if the user chose to keep it) so the expense row
     // is created with its stored URL.
@@ -120,17 +138,24 @@ export function AddExpenseModal({ visible, onClose }: { visible: boolean; onClos
       amount, description, category, expenseDate, paymentMethod,
       bankAccountId: bankAccountId ?? undefined,
       creditCardId: creditCardId ?? undefined,
-      receiptUrl, receiptName,
+      isRecurring,
+      frequency: isRecurring ? frequency : undefined,
+      // On edit, only override the receipt when a new file was attached.
+      ...(receiptUrl !== undefined ? { receiptUrl, receiptName } : {}),
     })
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? "Invalid input")
       return
     }
     try {
-      const created = await create.mutateAsync(parsed.data)
-      // Keep a local copy keyed by expense id for offline viewing (best-effort).
-      if (willKeep && created?.id) {
-        await cacheReceiptLocally(created.id, attachment!.uri, attachment!.name, attachment!.isPdf).catch(() => {})
+      if (editing) {
+        await update.mutateAsync({ id: expense!.id, input: parsed.data })
+      } else {
+        const created = await create.mutateAsync(parsed.data)
+        // Keep a local copy keyed by expense id for offline viewing (best-effort).
+        if (willKeep && created?.id) {
+          await cacheReceiptLocally(created.id, attachment!.uri, attachment!.name, attachment!.isPdf).catch(() => {})
+        }
       }
       reset()
       onClose()
@@ -142,7 +167,7 @@ export function AddExpenseModal({ visible, onClose }: { visible: boolean; onClos
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <ScrollView className="flex-1 bg-background px-6 pt-6" keyboardShouldPersistTaps="handled">
-        <Text className="mb-4 text-2xl font-bold text-foreground">Add expense</Text>
+        <Text className="mb-4 text-2xl font-bold text-foreground">{editing ? "Edit expense" : "Add expense"}</Text>
 
         {/* AI receipt scan — attach a photo/PDF and auto-fill the fields below. */}
         <View className="mb-5 rounded-2xl border border-border bg-card p-4">
@@ -231,14 +256,30 @@ export function AddExpenseModal({ visible, onClose }: { visible: boolean; onClos
           </>
         )}
 
+        {/* Recurring toggle — for charges that repeat month on month. */}
+        <View className="mt-4 flex-row items-center justify-between">
+          <Text className="flex-1 pr-3 text-sm font-medium text-foreground">Recurring expense</Text>
+          <Switch value={isRecurring} onValueChange={setIsRecurring} trackColor={{ true: c.primary, false: c.border }} thumbColor={c.card} />
+        </View>
+        {isRecurring && (
+          <>
+            <Text className={labelCls}>Frequency</Text>
+            <Chips
+              options={FREQUENCIES.map((f) => ({ value: f, label: FREQUENCY_LABELS[f] }))}
+              value={frequency}
+              onChange={setFrequency}
+            />
+          </>
+        )}
+
         {error ? <Text className="mt-2 text-sm text-destructive">{error}</Text> : null}
 
         <View className="mb-10 mt-6 flex-row gap-3">
           <TouchableOpacity className="flex-1 items-center rounded-lg border border-border py-4" onPress={() => { reset(); onClose() }}>
             <Text className="font-semibold text-foreground">Cancel</Text>
           </TouchableOpacity>
-          <TouchableOpacity className="flex-1 items-center rounded-lg bg-primary py-4" disabled={create.isPending || uploading} onPress={onSubmit}>
-            {create.isPending || uploading ? <ActivityIndicator color={c.primaryForeground} /> : <Text className="font-semibold text-primary-foreground">Save</Text>}
+          <TouchableOpacity className="flex-1 items-center rounded-lg bg-primary py-4" disabled={create.isPending || update.isPending || uploading} onPress={onSubmit}>
+            {create.isPending || update.isPending || uploading ? <ActivityIndicator color={c.primaryForeground} /> : <Text className="font-semibold text-primary-foreground">Save</Text>}
           </TouchableOpacity>
         </View>
       </ScrollView>

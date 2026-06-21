@@ -29,6 +29,8 @@ function parseIncomeForm(formData: FormData) {
     bankAccountId: formData.get("bankAccountId") || undefined,
     category: formData.get("category"),
     notes: formData.get("notes") || undefined,
+    receiptUrl: formData.get("receiptUrl") || undefined,
+    receiptName: formData.get("receiptName") || undefined,
   }
 }
 

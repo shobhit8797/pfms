@@ -17,12 +17,16 @@ import { Button } from "@/components/ui/button"
 import { serializeDecimals } from "@/lib/utils"
 import { DeleteEntryButton } from "@/components/shared/delete-entry-button"
 import { EditIncomeDialog } from "@/components/income/edit-income-dialog"
+import { RecurringSuggestionsBanner } from "@/components/shared/recurring-suggestions-banner"
+import { getRecurringSuggestions } from "@/app/actions/recurring"
 
 export default async function IncomePage() {
-  const [incomesRaw, accountsRaw] = await Promise.all([
+  const [incomesRaw, accountsRaw, suggestions] = await Promise.all([
     getIncomes(),
     getBankAccounts(),
+    getRecurringSuggestions(),
   ])
+  const incomeSuggestions = suggestions.filter((s) => s.kind === "income")
 
   // Serialize Decimal fields for Client Components
   const incomes = serializeDecimals(incomesRaw)
@@ -43,6 +47,7 @@ export default async function IncomePage() {
 
   return (
     <div className="p-6 md:p-8 space-y-8">
+      {incomeSuggestions.length > 0 && <RecurringSuggestionsBanner suggestions={incomeSuggestions} />}
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
@@ -210,6 +215,8 @@ export default async function IncomePage() {
                             bankAccountId: income.bankAccountId,
                             category: income.category,
                             notes: income.notes,
+                            receiptUrl: income.receiptUrl,
+                            receiptName: income.receiptName,
                           }}
                           accounts={accounts}
                         />

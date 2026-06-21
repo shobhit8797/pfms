@@ -25,6 +25,7 @@ model User {
   incomes              Income[]
   expenses             Expense[]
   subscriptions        Subscription[]
+  subscriptionPayments SubscriptionPayment[]
   budgets              Budget[]
   creditCards          CreditCard[]
   debitCards           DebitCard[]
@@ -373,6 +374,8 @@ model Income {
   bankAccountId String?
   category      String
   invoiceUrl    String?
+  receiptUrl    String?    // Vercel Blob URL of an attached invoice/pay-slip (image/PDF)
+  receiptName   String?    // original file name of the attached receipt
   notes         String?    @db.Text
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
@@ -456,6 +459,37 @@ model Subscription {
 
   user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   creditCard CreditCard? @relation(fields: [creditCardId], references: [id])
+  payments   SubscriptionPayment[]
+}
+
+/// One row per billing period that was paid (manually or auto-posted by the
+/// recurring cron). Drives the subscription payment history and the
+/// active/paid month grid. `@@unique([subscriptionId, periodStart])` makes
+/// mark-paid idempotent across cron re-runs and manual taps.
+model SubscriptionPayment {
+  id             String                    @id @default(cuid())
+  subscriptionId String
+  userId         String
+  periodStart    DateTime  // start of the billing period this payment covers
+  dueDate        DateTime
+  amount         Decimal
+  status         SubscriptionPaymentStatus @default(PAID)
+  paidDate       DateTime?
+  expenseId      String?   // links to the auto-posted / created Expense, if any
+  notes          String?   @db.Text
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, periodStart])
+  @@index([userId])
+}
+
+enum SubscriptionPaymentStatus {
+  PAID
+  SKIPPED
 }
 
 enum BudgetPeriod {

@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
+import { ReceiptUploadField } from "@/components/income/receipt-upload-field"
 import { updateIncome } from "@/app/actions/income"
 import { toast } from "sonner"
 import { Pencil, Loader2 } from "lucide-react"
@@ -40,6 +41,8 @@ export type EditableIncome = {
   bankAccountId: string | null
   category: string
   notes: string | null
+  receiptUrl?: string | null
+  receiptName?: string | null
 }
 
 interface Props {
@@ -173,6 +176,8 @@ export function EditIncomeDialog({ income, accounts }: Props) {
             <Label htmlFor="notes">Notes</Label>
             <Textarea id="notes" name="notes" defaultValue={income.notes || ""} placeholder="Additional details..." />
           </div>
+
+          <ReceiptUploadField defaultUrl={income.receiptUrl ?? null} defaultName={income.receiptName ?? null} />
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
